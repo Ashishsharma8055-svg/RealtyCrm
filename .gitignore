@@ -1,0 +1,15 @@
+# Dependencies (never commit these — they're huge and rebuildable)
+node_modules/
+
+# OS / editor junk
+.DS_Store
+**/.DS_Store
+Thumbs.db
+.vscode/
+
+# Local test scripts (not part of the site)
+test-*.js
+
+# Logs
+*.log
+npm-debug.log*

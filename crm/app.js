@@ -152,6 +152,7 @@ const META = {
   customers: ["Customers", "+ Add Customer", () => openCustomerForm()],
   projects: ["Projects", "+ Add Project", () => openWebProjectForm()],
   inventory: ["Inventory", "+ Add Unit", () => openUnitForm()],
+  testimonials: ["Testimonials", "+ Add Testimonial", () => openTestimonialForm()],
   reports: ["Reports & Analysis", "Print / PDF", () => { if (typeof window !== "undefined") window.print(); }],
 };
 let active = "dash";
@@ -165,6 +166,7 @@ function subFor(k) {
   if (k === "leads") return `${DB.leads.length} total leads`;
   if (k === "digital") return "Website enquiries — review and transfer into your CRM";
   if (k === "inventory") return "Live unit availability across projects";
+  if (k === "testimonials") return "Customer reviews shown on your website";
   if (k === "followups") return `${b.today.length} today · ${b.upcoming.length} upcoming · ${b.missed.length} missed`;
   if (k === "calendar") return "Meetings & follow-up schedule";
   if (k === "brokers") return `${DB.brokers.length} channel partners empanelled`;
@@ -203,7 +205,7 @@ function donut(parts) {
 }
 
 /* ---------- Views ---------- */
-const VIEWS = { dash: viewDash, leads: viewLeads, digital: viewDigital, followups: viewFollowups, calendar: viewCalendar, brokers: viewBrokers, customers: viewCustomers, projects: viewProjectsWeb, inventory: viewInventory, reports: viewReports };
+const VIEWS = { dash: viewDash, leads: viewLeads, digital: viewDigital, followups: viewFollowups, calendar: viewCalendar, brokers: viewBrokers, customers: viewCustomers, projects: viewProjectsWeb, inventory: viewInventory, testimonials: viewTestimonials, reports: viewReports };
 
 function viewDash() {
   const L = DB.leads;
@@ -356,7 +358,7 @@ function downloadICS() {
 /* ---- Google Calendar AUTO-sync (OAuth, optional) ----
    Paste your Google OAuth Web Client ID below to enable it (see GOOGLE_CALENDAR_SETUP.md).
    When enabled and connected, scheduling a meeting inserts it into your Google Calendar. */
-const GCAL_CLIENT_ID = ""; // paste your Google OAuth Web Client ID here to enable auto-sync
+const GCAL_CLIENT_ID = "387123468989-1gk4j0vrd5tbtr0rbcfv1b65uheqc4e1.apps.googleusercontent.com"; // Google OAuth Web Client ID (auto-sync to Realty Cafe calendar)
 const GCAL_CALENDAR_ID = "e7a7860fc16abea9eb6ba3bc112188f20129f23696687e97c333d2073dd75f27@group.calendar.google.com"; // "Realty Cafe" calendar; use "primary" for your default calendar
 let gcalToken = null, gcalTokenExp = 0, gcalTokenClient = null, gcalPending = null;
 function gcalLibReady() { return !!(window.google && google.accounts && google.accounts.oauth2); }
@@ -1180,6 +1182,7 @@ function bindView(k) {
   if (k === "projects") { populateProjectsWeb(); }
   if (k === "digital") { populateDigital(); }
   if (k === "inventory") { populateInventory(); }
+  if (k === "testimonials") { populateTestimonials(); }
   if (k === "reports") { bindReports(); }
 }
 
@@ -2365,6 +2368,94 @@ async function deleteUnit(id) {
   if (!confirm("Delete this unit?")) return;
   try { await S.deleteUnit(id); } catch (e) {}
   toast("Unit deleted"); populateInventory();
+}
+
+/* ====================== TESTIMONIALS ====================== */
+let _testi = [];
+function testiStatusTag(approved) {
+  const c = approved ? ["#127a3e", "#e7f5ec"] : ["#a15c00", "#faf0dd"];
+  return `<span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600;color:${c[0]};background:${c[1]}">${approved ? "Published" : "Pending"}</span>`;
+}
+function viewTestimonials() {
+  return `
+  <div class="card filters">
+    <input type="text" class="search" id="tq" placeholder="Search name, role, review…" />
+    <button class="btn danger sm" id="tDel">🗑 Delete selected</button>
+    <button class="btn outline sm" id="tExp">⌄ Export</button>
+  </div>
+  <div class="card"><div class="table-wrap"><table>
+    <thead><tr><th style="width:34px"><input type="checkbox" class="bulk-all"></th>${["Name", "Role", "Rating", "Review", "Status", ""].map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+    <tbody id="testiRows"></tbody></table><div id="testiEmpty"></div></div></div>`;
+}
+async function populateTestimonials() {
+  const S = WS(); const body = document.getElementById("testiRows"); if (!body) return;
+  if (!S) { document.getElementById("testiEmpty").innerHTML = `<div class="empty">Website data layer not loaded.</div>`; return; }
+  try { _testi = await S.testimonials(true); } catch (e) { _testi = []; }
+  // Pending first (need your attention), then published.
+  _testi.sort((a, b) => (a.approved === b.approved ? 0 : a.approved ? 1 : -1));
+  const q = (document.getElementById("tq") ? document.getElementById("tq").value : "").toLowerCase();
+  const rows = _testi.filter((t) => !q || `${t.name || ""} ${t.role || ""} ${t.text || ""}`.toLowerCase().includes(q));
+  document.getElementById("testiEmpty").innerHTML = rows.length ? "" : `<div class="empty">No testimonials yet. Add one, or they arrive when visitors submit a review on your site.</div>`;
+  body.innerHTML = rows.map((t) => `<tr>
+      <td><input type="checkbox" class="bulk" data-id="${esc(String(t.id))}"></td>
+      <td><b>${esc(t.name) || "—"}</b></td>
+      <td class="nowrap">${esc(t.role) || "—"}</td>
+      <td class="nowrap" style="color:#b3762f">${"★".repeat(Number(t.rating) || 5)}</td>
+      <td class="fu-meta" style="max-width:300px">${esc(truncate(t.text, 100))}</td>
+      <td>${testiStatusTag(!!t.approved)}</td>
+      <td class="right nowrap">
+        <button class="btn ${t.approved ? "outline" : "primary"} sm" data-tappr="${esc(String(t.id))}">${t.approved ? "Unpublish" : "Approve"}</button>
+        <button class="btn danger sm" data-tdel="${esc(String(t.id))}">Delete</button>
+      </td>
+    </tr>`).join("");
+  wireBulkAll("testiRows");
+  body.querySelectorAll("[data-tappr]").forEach((b) => (b.onclick = () => toggleTestimonial(b.getAttribute("data-tappr"))));
+  body.querySelectorAll("[data-tdel]").forEach((b) => (b.onclick = () => deleteTesti(b.getAttribute("data-tdel"))));
+  const tq = document.getElementById("tq"); if (tq && !tq._wired) { tq._wired = 1; tq.addEventListener("input", populateTestimonials); }
+  const del = document.getElementById("tDel"); if (del) del.onclick = () => bulkDeleteStore("testiRows", (id) => S.deleteTestimonial(id), "testimonials", populateTestimonials);
+  const exp = document.getElementById("tExp"); if (exp) exp.onclick = exportTestimonials;
+}
+async function toggleTestimonial(id) {
+  const S = WS(); if (!S) return;
+  const t = _testi.find((x) => String(x.id) === String(id)); if (!t) return;
+  try { await S.setTestimonialApproved(t.id, !t.approved); } catch (e) {}
+  toast(t.approved ? "Unpublished from site" : "Published to your website"); populateTestimonials();
+}
+async function deleteTesti(id) {
+  const S = WS(); if (!S) return;
+  if (!confirm("Delete this testimonial?")) return;
+  try { await S.deleteTestimonial(id); } catch (e) {}
+  toast("Testimonial deleted"); populateTestimonials();
+}
+function openTestimonialForm() {
+  const S = WS(); if (!S) return toast("Website data layer not loaded");
+  modal("Add Testimonial", `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-body"><div class="form-grid">
+      ${field("Customer name", "t_name", "", "full")}
+      ${field("Role / location (e.g. NRI Buyer, Dubai)", "t_role", "", "full")}
+      ${field("Rating (1–5)", "t_rating", "5", "number")}
+      ${field("Review", "t_text", "", "textarea")}
+      <label class="field full" style="flex-direction:row;align-items:center;gap:10px;cursor:pointer"><input type="checkbox" id="t_pub" checked style="width:auto"><span>Publish to website now (untick to keep as pending)</span></label>
+    </div></div></div></div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="t_save">Save</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  document.getElementById("t_save").onclick = async () => {
+    const name = fieldVal("t_name"); if (!name) return toast("Name is required");
+    const text = fieldVal("t_text"); if (!text) return toast("Review text is required");
+    let rating = Number(fieldVal("t_rating")) || 5; rating = Math.max(1, Math.min(5, rating));
+    const publish = document.getElementById("t_pub").checked;
+    try {
+      const created = await S.addTestimonial({ name, role: fieldVal("t_role"), rating, text });
+      if (publish && created && created.id) await S.setTestimonialApproved(created.id, true);
+    } catch (e) {}
+    closeModal(); toast("Testimonial saved"); populateTestimonials();
+  };
+}
+function exportTestimonials() {
+  const head = ["Name", "Role", "Rating", "Review", "Published"];
+  const rows = _testi.map((t) => [t.name || "", t.role || "", t.rating || "", t.text || "", t.approved ? "Yes" : "No"]);
+  const csv = [head].concat(rows).map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const b = new Blob([csv], { type: "text/csv" }), a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "coffeeanddeals-testimonials.csv"; a.click(); URL.revokeObjectURL(a.href); toast("Exported");
 }
 
 /* ====================== PROJECT SYNC (internal mirror) ====================== */
