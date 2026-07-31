@@ -1,0 +1,7 @@
+<svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Low-rise independent floors">
+  <defs><linearGradient id="s1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f4ee"/><stop offset="1" stop-color="#ecebe3"/></linearGradient><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dbe4ee"/><stop offset="1" stop-color="#c6d2df"/></linearGradient></defs>
+  <rect width="600" height="400" fill="url(#s1)"/><g fill="#cdd9c8"><ellipse cx="70" cy="300" rx="46" ry="54"/><ellipse cx="540" cy="305" rx="42" ry="50"/></g>
+  <rect x="150" y="120" width="300" height="240" fill="#ffffff"/><rect x="150" y="120" width="300" height="8" fill="#e7e4dc"/><rect x="150" y="196" width="300" height="8" fill="#e7e4dc"/><rect x="150" y="272" width="300" height="8" fill="#e7e4dc"/>
+  <g fill="url(#g1)"><rect x="172" y="136" width="112" height="52"/><rect x="316" y="136" width="112" height="52"/><rect x="172" y="212" width="112" height="52"/><rect x="316" y="212" width="112" height="52"/><rect x="172" y="288" width="112" height="52"/><rect x="316" y="288" width="112" height="52"/></g>
+  <g fill="#f6e2bd" opacity="0.8"><rect x="316" y="136" width="112" height="52"/><rect x="172" y="288" width="112" height="52"/></g><rect x="120" y="366" width="360" height="6" fill="#ddd9d0"/>
+</svg>

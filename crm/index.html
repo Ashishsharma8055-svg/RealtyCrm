@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RealtyCRM — Coffee &amp; Deals</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-name">Realty<span>CRM</span></div>
+        <div class="brand-sub">Coffee &amp; Deals · Powered by Ashish Sharma</div>
+      </div>
+      <nav id="nav" class="nav"></nav>
+      <div class="side-foot">
+        <div class="side-status"><span class="side-dot" id="sideDot"></span><span id="sideMode">Local · this device</span></div>
+        <div class="side-group">
+          <div class="side-group-label">Data</div>
+          <button class="side-btn" data-action="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg><span>Backup</span></button>
+          <button class="side-btn" data-action="import"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3m0 0l-4 4m4-4l4 4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg><span>Restore</span></button>
+          <button class="side-btn" data-action="gcal-connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span>Google Calendar</span></button>
+        </div>
+        <div class="side-group">
+          <div class="side-group-label">Account</div>
+          <button class="side-btn" data-action="changepw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg><span>Change password</span></button>
+          <button class="side-btn danger" data-action="logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg><span>Log out</span></button>
+        </div>
+      </div>
+      <input type="file" id="importFile" accept="application/json" hidden />
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <p id="pageSub" class="sub">Live overview of your pipeline</p>
+        </div>
+        <div class="topbar-actions">
+          <button id="primaryBtn" class="btn primary">+ New Enquiry</button>
+        </div>
+      </header>
+      <main id="view" class="view"></main>
+    </div>
+  </div>
+
+  <div id="authGate" hidden></div>
+  <div id="modalHost"></div>
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Firebase cloud mode (Authentication + Firestore). If this loads and a user
+       signs in, the CRM stores its data in Firestore instead of this browser.
+       Requirements in the Firebase console:
+         1) Authentication → Sign-in method → Email/Password → Enable, and add a user.
+         2) Firestore Database → Create database, and set the security rules.
+         3) Authentication → Settings → Authorized domains → add your site's domain
+            (localhost is already allowed for local testing).
+       The apiKey below is public by design; your data is protected by Firestore rules. -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, updatePassword, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    // ============================================================
+    //  RUN MODE — flip this ONE line:
+    //    "local" = runs instantly in VS Code, no setup. Login: admin / admin123
+    //    "cloud" = shared Google Firebase database + website lead bridge
+    //              (do the 4 console steps in README first).
+    // ============================================================
+    const CRM_MODE = "cloud";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD1hZIxwgwwfP3d2n869xzkmL2ZmAi-gn4",
+      authDomain: "realtycrm-e2edf.firebaseapp.com",
+      projectId: "realtycrm-e2edf",
+      storageBucket: "realtycrm-e2edf.firebasestorage.app",
+      messagingSenderId: "387123468989",
+      appId: "1:387123468989:web:d9d5958e876b59916335d4",
+      measurementId: "G-BRGD1SV0WT"
+    };
+    if (CRM_MODE === "cloud") try {
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      // Security: require sign-in again after the browser is closed (session-only).
+      setPersistence(auth, browserSessionPersistence).catch(() => {});
+      const db = getFirestore(app);
+      const ref = doc(db, "crm", "state");
+      window.RCRM_FB = {
+        auth,
+        onAuth: (cb) => onAuthStateChanged(auth, cb),
+        signIn: (email, pass) => signInWithEmailAndPassword(auth, email, pass),
+        signOut: () => signOut(auth),
+        changePassword: (np) => updatePassword(auth.currentUser, np),
+        loadState: async () => { const s = await getDoc(ref); return s.exists() ? s.data() : null; },
+        saveState: (data) => setDoc(ref, data),
+        // Website leads: the public site writes each enquiry into `enquiries`.
+        // The CRM reads them here and imports new ones as leads (see app.js).
+        loadEnquiries: async () => {
+          try {
+            const snap = await getDocs(collection(db, "enquiries"));
+            return snap.docs.map((d) => Object.assign({ _id: d.id }, d.data()));
+          } catch (e) { return []; }
+        },
+      };
+    } catch (e) { console.warn("Firebase init failed — falling back to local storage.", e); }
+    window.dispatchEvent(new Event("rcrm-fb-ready"));
+  </script>
+  <!-- Google Identity Services — used only if you enable Google Calendar auto-sync
+       (see GOOGLE_CALENDAR_SETUP.md). Harmless if unused. -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <!-- Shared website data layer — lets the CRM read the SAME projects,
+       inventory and enquiries the public website uses (Digital Enquiry,
+       Inventory and Projects pages). Runs in local mode for testing. -->
+  <script src="../js/firebase-config.js"></script>
+  <script src="../js/data.js"></script>
+  <!-- SheetJS — same library admin.html uses, for Excel Template/Import/Export. -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

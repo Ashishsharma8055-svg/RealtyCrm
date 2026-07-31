@@ -1,0 +1,7 @@
+<svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Gated residential plots">
+  <defs><linearGradient id="s3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f4ee"/><stop offset="1" stop-color="#eae9e1"/></linearGradient></defs>
+  <rect width="600" height="400" fill="url(#s3)"/><ellipse cx="300" cy="150" rx="260" ry="60" fill="#dfe7d8" opacity="0.7"/>
+  <g stroke="#cfcbc0" stroke-width="2" fill="#f0eee7"><polygon points="300,150 470,210 300,290 130,210"/></g>
+  <g stroke="#d7d3c8" stroke-width="2" fill="none"><line x1="243" y1="170" x2="357" y2="230"/><line x1="357" y1="170" x2="243" y2="230"/><line x1="215" y1="190" x2="385" y2="250"/><line x1="385" y1="190" x2="215" y2="250"/><line x1="300" y1="150" x2="300" y2="290"/></g>
+  <polygon points="300,190 357,210 300,232 243,210" fill="#dbe4ee" opacity="0.85"/><g fill="#cdd9c8"><ellipse cx="110" cy="250" rx="34" ry="40"/><ellipse cx="500" cy="255" rx="32" ry="38"/></g><rect x="120" y="300" width="360" height="8" fill="#ddd9d0"/>
+</svg>

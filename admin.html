@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin · Coffee &amp; Deals CRM</title>
+<meta name="robots" content="noindex,nofollow" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="stylesheet" href="css/admin.css" />
+</head>
+<body class="admin-body">
+
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="gate-head" id="gateHead"></div>
+    <div class="gate-body">
+      <div id="gateFirebase" style="display:none">
+        <div class="field"><label>Admin email</label><input id="adEmail" type="email" placeholder="you@coffeeanddeals.in" /></div>
+        <div class="field"><label>Password</label><input id="adPass" type="password" placeholder="••••••••" /></div>
+        <button class="btn btn-gold btn-block" id="btnFbLogin" style="margin-top:.6rem">Sign in</button>
+      </div>
+      <div id="gateLocal">
+        <div class="field"><label>Admin passcode</label><input id="adCode" type="password" placeholder="Enter passcode" /></div>
+        <button class="btn btn-gold btn-block" id="btnLocalLogin" style="margin-top:.6rem">Unlock CRM</button>
+        <p class="form-note" style="margin-top:.8rem">Demo/local mode. Default passcode set in <code>firebase-config.js</code>.</p>
+      </div>
+      <p class="center" style="margin-top:1rem"><a href="index.html" class="muted" style="font-size:.85rem">← Back to website</a></p>
+    </div>
+  </div>
+</div>
+
+<div class="admin-shell" id="shell" style="display:none">
+  <aside class="side">
+    <div class="brand" id="sideBrand"></div>
+    <nav id="sideNav">
+      <a class="active" data-view="dash">📊 Dashboard</a>
+      <a data-view="customers">👥 Customers <span class="badge" id="bCust">0</span></a>
+      <a data-view="analytics">📊 Analytics</a>
+      <a data-view="funnel">📈 Sales Funnel</a>
+      <a data-view="workplan">🗓 Work Plan <span class="badge" id="bTask">0</span></a>
+      <a data-view="projects">🏢 Projects <span class="badge" id="bProjects">0</span></a>
+      <a data-view="inventory">🔑 Inventory <span class="badge" id="bInventory">0</span></a>
+      <a data-view="enquiries">📇 Enquiries <span class="badge" id="bEnq">0</span></a>
+      <a data-view="partners">🤝 Channel Partners <span class="badge" id="bCP">0</span></a>
+      <a data-view="testimonials">⭐ Testimonials <span class="badge" id="bTesti">0</span></a>
+    </nav>
+    <div class="side-foot"><div id="whoami"></div><a class="mini" id="btnLogout" style="display:inline-block;margin-top:8px">Log out</a></div>
+  </aside>
+
+  <main class="main">
+    <div class="main-head"><h1 id="viewTitle">Dashboard</h1>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted);cursor:pointer"><input type="checkbox" id="autoRefresh" style="width:auto"> Auto</label>
+        <button class="btn btn-outline btn-sm" id="btnRefresh">🔄 Refresh</button>
+        <span class="mode-pill" id="modePill"></span>
+      </div>
+    </div>
+
+    <section class="view active" id="v-dash">
+      <div class="cards" id="dashCards"></div>
+      <div class="panel"><div class="panel-head"><h3>Latest enquiries — who wants what</h3><a class="mini" data-goto="enquiries">View all →</a></div><div class="tbl-scroll"><table class="tbl" id="dashEnq"></table></div></div>
+    </section>
+
+    <section class="view" id="v-customers">
+      <div class="cards" id="custKpis"></div>
+      <div class="panel">
+        <div class="panel-head"><h3>Customers · Sales Pipeline</h3>
+          <div class="panel-actions">
+            <button class="btn btn-outline btn-sm" id="custViewToggle">▦ Board view</button>
+            <button class="btn btn-outline btn-sm" id="custAssign">⚡ Auto-assign</button>
+            <input class="search-inline" id="custSearch" placeholder="Search…" />
+            <select class="search-inline" id="custStageFilter"><option value="">All stages</option></select>
+            <button class="btn btn-outline btn-sm bulk-del" id="custBulkDel">🗑 Delete selected</button>
+            <button class="btn btn-outline btn-sm" id="custExport">⬇ Export</button>
+            <button class="btn btn-gold btn-sm" id="custAdd">＋ Add Customer</button>
+          </div>
+        </div>
+        <div class="tbl-scroll" id="custTableWrap"><table class="tbl" id="custTable"></table></div>
+        <div id="custBoard" style="display:none"></div>
+      </div>
+    </section>
+
+    <section class="view" id="v-analytics">
+      <div class="cards" id="anKpis"></div>
+      <div class="an-grid">
+        <div class="panel"><div class="panel-head"><h3>Lead Sources</h3><span class="muted" style="font-size:.82rem">count &amp; pipeline value</span></div><div style="padding:20px 22px" id="anSource"></div></div>
+        <div class="panel"><div class="panel-head"><h3>Stage Conversion</h3><span class="muted" style="font-size:.82rem">share of pipeline</span></div><div style="padding:20px 22px" id="anConv"></div></div>
+      </div>
+      <div class="an-grid">
+        <div class="panel"><div class="panel-head"><h3>Team Performance</h3></div><div class="tbl-scroll"><table class="tbl" id="anOwner"></table></div></div>
+        <div class="panel"><div class="panel-head"><h3>⏳ Aging Leads</h3><span class="muted" style="font-size:.82rem">stale &gt; 14 days or overdue</span></div><div style="padding:14px 18px" id="anAging"></div></div>
+      </div>
+    </section>
+
+    <section class="view" id="v-funnel">
+      <div class="cards" id="funnelKpis"></div>
+      <div class="panel"><div class="panel-head"><h3>Monthly Sales Target</h3><div class="panel-actions"><input class="search-inline" id="targetInput" type="number" placeholder="Target ₹ Cr" style="width:150px" /><button class="btn btn-gold btn-sm" id="targetSave">Save target</button></div></div><div style="padding:20px 22px" id="targetProgress"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Sales Funnel</h3><span class="muted" style="font-size:.85rem">Leads by stage · value &amp; conversion</span></div><div style="padding:24px" id="funnelViz"></div></div>
+      <div class="panel"><div class="panel-head"><h3>Weighted Forecast by Stage</h3></div><div class="tbl-scroll"><table class="tbl" id="forecastTable"></table></div></div>
+    </section>
+
+    <section class="view" id="v-workplan">
+      <div class="cards" id="taskKpis"></div>
+      <div class="panel"><div class="panel-head"><h3>Work Plan · Tasks &amp; Follow-ups</h3><div class="panel-actions"><button class="btn btn-gold btn-sm" id="taskAdd">＋ Add Task</button></div></div><div style="padding:16px 22px" id="workplanBody"></div></div>
+    </section>
+
+    <section class="view" id="v-projects">
+      <div class="panel"><div class="panel-head"><h3>Projects</h3><div class="panel-actions"><input class="search-inline" id="pSearch" placeholder="Search projects…" /><button class="btn btn-outline btn-sm bulk-del" id="pBulkDel">🗑 Delete selected</button><button class="btn btn-outline btn-sm" id="pTemplate">⬇ Template</button><button class="btn btn-outline btn-sm" id="pImport">⬆ Import</button><button class="btn btn-outline btn-sm" id="pExport">⬇ Export</button><button class="btn btn-gold btn-sm" id="pAdd">＋ Add Project</button></div></div><div class="tbl-scroll"><table class="tbl" id="pTable"></table></div></div>
+    </section>
+
+    <section class="view" id="v-inventory">
+      <div class="panel"><div class="panel-head"><h3>Inventory</h3><div class="panel-actions"><input class="search-inline" id="iSearch" placeholder="Search units…" /><select class="search-inline" id="iProjectFilter"><option value="">All projects</option></select><button class="btn btn-outline btn-sm bulk-del" id="iBulkDel">🗑 Delete selected</button><button class="btn btn-outline btn-sm" id="iTemplate">⬇ Template</button><button class="btn btn-outline btn-sm" id="iImport">⬆ Import</button><button class="btn btn-outline btn-sm" id="iExport">⬇ Export</button><button class="btn btn-gold btn-sm" id="iAdd">＋ Add Unit</button></div></div><div class="tbl-scroll"><table class="tbl" id="iTable"></table></div></div>
+    </section>
+
+    <section class="view" id="v-enquiries">
+      <div class="panel"><div class="panel-head"><h3>Enquiry Records</h3><div class="panel-actions"><input class="search-inline" id="eSearch" placeholder="Search…" /><button class="btn btn-outline btn-sm bulk-del" id="eBulkDel">🗑 Delete selected</button><button class="btn btn-outline btn-sm" id="eExport">⬇ Export CSV</button></div></div><div class="tbl-scroll"><table class="tbl" id="eTable"></table></div></div>
+    </section>
+
+    <section class="view" id="v-partners">
+      <div class="panel"><div class="panel-head"><h3>Channel Partners</h3><div class="panel-actions"><input class="search-inline" id="cSearch" placeholder="Search partners…" /><button class="btn btn-outline btn-sm bulk-del" id="cBulkDel">🗑 Delete selected</button><button class="btn btn-outline btn-sm" id="cImport">⬆ Import</button><button class="btn btn-outline btn-sm" id="cExport">⬇ Export</button><button class="btn btn-gold btn-sm" id="cAdd">＋ Add Partner</button></div></div><div class="tbl-scroll"><table class="tbl" id="cTable"></table></div></div>
+    </section>
+
+    <section class="view" id="v-testimonials">
+      <div class="panel"><div class="panel-head"><h3>Testimonials — moderation</h3><div class="panel-actions"><span class="muted" style="font-size:.85rem;align-self:center">Approve to publish · delete if abusive</span><button class="btn btn-outline btn-sm" id="tExport">⬇ Export</button><button class="btn btn-outline btn-sm bulk-del" id="tBulkDel">🗑 Delete selected</button></div></div><div class="tbl-scroll"><table class="tbl" id="tTable"></table></div></div>
+    </section>
+  </main>
+</div>
+
+<div class="drawer-overlay" id="drawerOverlay"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head"><h3 id="drawerTitle">Edit</h3><button class="close-x" style="position:static;color:var(--foam)" id="drawerClose">✕</button></div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<aside class="drawer" id="importDrawer">
+  <div class="drawer-head"><h3 id="importTitle">Import</h3><button class="close-x" style="position:static;color:var(--foam)" id="importClose">✕</button></div>
+  <div class="drawer-body">
+    <p class="muted" id="importHelp" style="font-size:.88rem"></p>
+    <div class="dropzone" id="dropzone"><div class="big">📄</div><b>Drop Excel / CSV here</b><p class="muted" style="margin:.4rem 0 0;font-size:.84rem">or click to browse (.xlsx, .xls, .csv)</p><input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" /></div>
+    <div class="import-report" id="importReport"></div>
+    <div style="margin-top:14px"><a class="mini" id="downloadTemplate">⬇ Download Excel template (.xlsx)</a></div>
+    <p class="form-note" style="margin-top:1rem">Duplicates are auto-handled: <b>projects</b> merge on Project Name; <b>inventory</b> merges on Project Name + Unit No. Existing rows are updated, not duplicated.</p>
+  </div>
+</aside>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/data.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

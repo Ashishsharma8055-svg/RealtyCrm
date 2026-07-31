@@ -1,0 +1,7 @@
+<svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Luxury high-rise residence">
+  <defs><linearGradient id="s2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f4ee"/><stop offset="1" stop-color="#eae9e1"/></linearGradient><linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dbe4ee"/><stop offset="1" stop-color="#bccadb"/></linearGradient></defs>
+  <rect width="600" height="400" fill="url(#s2)"/><g fill="#cdd9c8"><ellipse cx="70" cy="330" rx="44" ry="40"/><ellipse cx="545" cy="335" rx="40" ry="36"/></g>
+  <rect x="230" y="40" width="150" height="330" fill="#ffffff"/>
+  <g fill="url(#g2)"><rect x="248" y="60" width="46" height="30"/><rect x="316" y="60" width="46" height="30"/><rect x="248" y="104" width="46" height="30"/><rect x="316" y="104" width="46" height="30"/><rect x="248" y="148" width="46" height="30"/><rect x="316" y="148" width="46" height="30"/><rect x="248" y="192" width="46" height="30"/><rect x="316" y="192" width="46" height="30"/><rect x="248" y="236" width="46" height="30"/><rect x="316" y="236" width="46" height="30"/><rect x="248" y="280" width="46" height="30"/><rect x="316" y="280" width="46" height="30"/><rect x="248" y="324" width="46" height="30"/><rect x="316" y="324" width="46" height="30"/></g>
+  <rect x="388" y="150" width="90" height="220" fill="#f7f5ef"/><rect x="180" y="366" width="330" height="8" fill="#ddd9d0"/>
+</svg>

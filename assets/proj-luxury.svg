@@ -1,0 +1,7 @@
+<svg viewBox="0 0 600 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ultra-luxury twin residences">
+  <defs><linearGradient id="s4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f4ee"/><stop offset="1" stop-color="#eae9e1"/></linearGradient><linearGradient id="g4" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#dbe4ee"/><stop offset="1" stop-color="#bccadb"/></linearGradient></defs>
+  <rect width="600" height="400" fill="url(#s4)"/><g fill="#cdd9c8"><ellipse cx="60" cy="330" rx="40" ry="38"/><ellipse cx="555" cy="330" rx="38" ry="36"/></g>
+  <path d="M150 370 L150 90 Q150 60 190 60 Q230 60 230 90 L230 370 Z" fill="#ffffff"/><path d="M370 370 L370 70 Q370 40 410 40 Q450 40 450 70 L450 370 Z" fill="#ffffff"/>
+  <g fill="url(#g4)"><rect x="164" y="96" width="52" height="26"/><rect x="164" y="176" width="52" height="26"/><rect x="164" y="256" width="52" height="26"/><rect x="164" y="336" width="52" height="26"/><rect x="384" y="76" width="52" height="26"/><rect x="384" y="156" width="52" height="26"/><rect x="384" y="236" width="52" height="26"/><rect x="384" y="316" width="52" height="26"/></g>
+  <rect x="230" y="150" width="140" height="16" fill="#f2f0e9"/>
+</svg>

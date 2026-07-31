@@ -1,0 +1,70 @@
+rules_version = '2';
+// =====================================================================
+// Coffee & Deals — Firestore Security Rules (merged: Website + RealtyCRM)
+//
+//  PUBLIC (no login):
+//    • read projects / inventory / approved testimonials
+//    • create/merge their own enquiry (a lead) — constrained shape only
+//    • submit an (unapproved) testimonial
+//  ADMIN (that's you — signed in with an authorised email, or a UID listed
+//         in /admins): full read/write, including the CRM document crm/state.
+//
+//  Change the email list below to add teammates. This is what actually keeps
+//  strangers out — enforced on Google's servers, not in the browser.
+// =====================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && (
+        (request.auth.token.email != null &&
+         request.auth.token.email in ["ashishsharma8055@gmail.com"]) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // ---- CRM data (RealtyCRM stores everything in the single doc crm/state) ----
+    match /crm/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    // ---- Public catalog ----
+    match /projects/{id}   { allow read: if true; allow write: if isAdmin(); }
+    match /inventory/{id}  { allow read: if true; allow write: if isAdmin(); }
+
+    // ---- Website leads (the bridge into the CRM) ----
+    // Visitors create or merge ONE enquiry document keyed by their lead code.
+    // Only you can read, edit or delete them.
+    match /enquiries/{id} {
+      allow create, update: if
+           request.resource.data.keys().hasOnly(
+             ['user','mobile','code','status','createdTs','ts','interests','agent'])
+        && request.resource.data.user is string
+        && request.resource.data.user.size() < 80
+        && request.resource.data.mobile is string
+        && request.resource.data.mobile.size() < 20;
+      allow read, delete: if isAdmin();
+    }
+
+    // ---- Channel partners ----
+    match /partners/{id}   { allow read, write: if isAdmin(); }
+
+    // ---- Testimonials: public can submit (unapproved); you moderate ----
+    match /testimonials/{id} {
+      allow read: if resource.data.approved == true || isAdmin();
+      allow create: if request.resource.data.approved == false
+                    && request.resource.data.name is string
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() < 600;
+      allow update, delete: if isAdmin();
+    }
+
+    // ---- Admin-only support collections (used by the built-in admin panel) ----
+    match /customers/{id}  { allow read, write: if isAdmin(); }
+    match /tasks/{id}      { allow read, write: if isAdmin(); }
+    match /settings/{id}   { allow read, write: if isAdmin(); }
+
+    // ---- Admin allow-list (optional legacy path; email list above is primary) ----
+    match /admins/{uid}    { allow read: if request.auth != null; allow write: if false; }
+  }
+}

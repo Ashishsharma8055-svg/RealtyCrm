@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Project · Coffee &amp; Deals</title>
+<meta name="description" content="BPTP project details, investor ROI projections and live inventory — curated by Ashish Sharma." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/styles.css" />
+<link rel="stylesheet" href="css/project.css" />
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="container">
+    <a class="brand" href="index.html" id="brand"></a>
+    <button class="nav-toggle" aria-label="Menu">☰</button>
+    <nav class="nav-links">
+      <a href="index.html#projects">Projects</a>
+      <a href="index.html#services">Services</a>
+      <a href="index.html#about">About</a>
+      <a class="btn btn-outline btn-sm" href="index.html#contact">Book a Call</a>
+    </nav>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<footer class="footer">
+  <div class="container">
+    <div class="foot-top">
+      <div>
+        <div class="brand" id="footBrand"></div>
+        <p style="max-width:26rem">Luxury BPTP real estate in Gurugram, curated with restraint. Building trust, one deal at a time.</p>
+        <p class="disclaimer">Prices, plans, ROI projections and inventory shown are indicative and for information only — not a binding offer or financial advice. Verify with official BPTP/RERA sources before transacting.</p>
+      </div>
+      <div><h4>Explore</h4><a href="index.html#projects">All Projects</a><a href="index.html#about">About</a><a href="index.html#insights">Insights</a></div>
+      <div><h4>Contact</h4><a id="footPhone" href="#"></a><a href="https://www.linkedin.com/in/sharma-ashish/" target="_blank" rel="noopener">in · LinkedIn</a></div>
+    </div>
+    <div class="footer-bottom"><span>© <span id="year"></span> Coffee &amp; Deals · coffeeanddeals.in</span><span>Made with ☕ &amp; care</span></div>
+  </div>
+</footer>
+
+<div class="modal-overlay" id="otpModal">
+  <div class="modal">
+    <button class="close-x" data-close>✕</button>
+    <div class="modal-head"><h3>Check Live Inventory</h3><p>Verify your mobile to view real-time availability for this project.</p></div>
+    <div class="modal-body">
+      <div id="otpStep1">
+        <div class="field"><label>Your name</label><input id="oName" maxlength="60" placeholder="Full name" /></div>
+        <div class="field"><label>Mobile number</label>
+          <div style="display:flex;gap:8px">
+            <input id="oCC" list="ccList" maxlength="5" value="+91" style="width:74px;text-align:center" aria-label="Country code" />
+            <input id="oMobile" maxlength="14" placeholder="98xxxxxxxx" style="flex:1" inputmode="numeric" />
+          </div>
+          <datalist id="ccList">
+            <option value="+91">India +91</option>
+            <option value="+1">USA/Canada +1</option>
+            <option value="+44">UK +44</option>
+            <option value="+971">UAE +971</option>
+            <option value="+65">Singapore +65</option>
+            <option value="+61">Australia +61</option>
+            <option value="+966">Saudi +966</option>
+            <option value="+974">Qatar +974</option>
+            <option value="+60">Malaysia +60</option>
+            <option value="+49">Germany +49</option>
+          </datalist>
+        </div>
+        <div class="field"><label>Are you a real estate agent / channel partner?</label>
+          <div class="agent-toggle" id="agentToggle">
+            <label class="at-opt"><input type="radio" name="isAgent" value="no" checked> No</label>
+            <label class="at-opt"><input type="radio" name="isAgent" value="yes"> Yes</label>
+          </div>
+        </div>
+        <div id="agentFields" style="display:none">
+          <div class="field"><label>Firm / Company name</label><input id="oFirm" maxlength="80" placeholder="Your firm name" /></div>
+          <div class="field"><label>Designation</label><input id="oDesig" maxlength="60" placeholder="e.g. Director, Sales Manager" /></div>
+          <p class="form-note" style="margin:.2rem 0 .4rem">Your name &amp; mobile above are used as the agent contact.</p>
+        </div>
+        <div id="recaptcha-container"></div>
+        <button class="btn btn-gold btn-block" id="oSend" style="margin-top:.6rem">Send OTP</button>
+        <p class="form-note" style="margin-top:.8rem">By continuing you agree to be contacted about this enquiry. Your number is stored securely for follow-up.</p>
+        <div class="demo-hint" id="demoHint" style="display:none"></div>
+      </div>
+      <div id="otpStep2" style="display:none">
+        <p class="form-note">Enter the 6-digit code sent to <b id="maskedNum"></b></p>
+        <div class="otp-inputs" id="otpInputs">
+          <input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" /><input maxlength="1" inputmode="numeric" />
+        </div>
+        <button class="btn btn-gold btn-block" id="oVerify" style="margin-top:1rem">Verify &amp; View Inventory</button>
+        <button class="btn btn-outline btn-block btn-sm" id="oBack" style="margin-top:.6rem">← Change number</button>
+        <div class="demo-hint" id="demoHint2" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="enqModal">
+  <div class="modal">
+    <button class="close-x" data-close>✕</button>
+    <div class="modal-head"><h3>Enquire about this unit</h3><p id="enqUnitLbl"></p></div>
+    <div class="modal-body">
+      <div class="field"><label>Your name</label><input id="eName" maxlength="60" /></div>
+      <div class="field"><label>Mobile</label><input id="eMobile" maxlength="16" /></div>
+      <button class="btn btn-gold btn-block" id="eSubmit">Send enquiry to Ashish</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/data.js"></script>
+<script src="js/lead-relay.js"></script>
+<script src="js/project.js"></script>
+</body>
+</html>

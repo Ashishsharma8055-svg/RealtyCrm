@@ -1,0 +1,15 @@
+BPTP DOWNTOWN IMAGE
+===================
+The site is already wired to show a file named exactly:
+
+    downtown.jpg
+
+To add your official BPTP Downtown photo:
+1. Save your image into THIS assets/ folder, named:  downtown.jpg
+   (use .jpg — if your file is .png/.webp that's fine too, just rename the
+    path in js/data.js from downtown.jpg to your filename)
+2. Open the site with Live Server and hard-refresh (Cmd/Ctrl+Shift+R).
+
+Until downtown.jpg is present, the card automatically shows the placeholder
+artwork (proj-luxury.svg) — nothing breaks.
+Recommended: landscape, ~1600px wide, under 500 KB.
