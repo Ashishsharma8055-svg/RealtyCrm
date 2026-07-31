@@ -139,6 +139,7 @@ const NAV = [
   ["customers", "Customers", '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0112 0M16 6a3 3 0 010 6M15 20a6 6 0 016 0"/>'],
   ["projects", "Projects", '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M8 15h2M14 15h2"/>'],
   ["inventory", "Inventory", '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>'],
+  ["testimonials", "Testimonials", '<path d="M8 10h8M8 14h5"/><path d="M4 4h16v12H8l-4 4z"/>'],
   ["reports", "Reports", '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>'],
 ];
 const META = {
