@@ -1672,7 +1672,7 @@ function openProfile(spec) { const [t, id] = spec.split(":"); return t === "lead
 
 /* ---------- Global click handling ---------- */
 document.addEventListener("click", (e) => {
-  const pill = e.target.closest("[data-pill]"); if (pill) { const raw = pill.getAttribute("data-pill"), sep = raw.indexOf("::"); const fid = raw.slice(0, sep), val = raw.slice(sep + 2); const inp = document.getElementById(fid); if (inp) inp.value = val; const set = pill.parentElement; if (set) set.querySelectorAll(".pill").forEach((b) => b.classList.toggle("on", b === pill)); return; }
+  const pill = e.target.closest("[data-pill]"); if (pill) { const raw = pill.getAttribute("data-pill"), sep = raw.indexOf("::"); const fid = raw.slice(0, sep), val = raw.slice(sep + 2); const inp = document.getElementById(fid); if (inp) { inp.value = val; inp.dispatchEvent(new Event("change")); } const set = pill.parentElement; if (set) set.querySelectorAll(".pill").forEach((b) => b.classList.toggle("on", b === pill)); return; }
   const star = e.target.closest("[data-star]"); if (star) { const raw = star.getAttribute("data-star"), sep = raw.indexOf("::"); const fid = raw.slice(0, sep), val = Number(raw.slice(sep + 2)); const inp = document.getElementById(fid); if (inp) inp.value = val || ""; const set = star.parentElement; if (set) set.querySelectorAll(".starbtn").forEach((b, i) => b.classList.toggle("on", i < val)); return; }
   const nav = e.target.closest("[data-nav]"); if (nav) return go(nav.getAttribute("data-nav"));
   const rfEl = e.target.closest("[data-rf]"); if (rfEl) return toggleReportFilter(rfEl.getAttribute("data-rf"));
