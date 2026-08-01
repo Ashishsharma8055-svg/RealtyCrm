@@ -1853,13 +1853,19 @@ function startCloudMode(FB) {
       renderLoading("Loading your data…");
       try {
         const state = await FB.loadState();
-        if (state && state.leads && state.leads.length) {
-          DB = Object.assign(emptyDB(), state);
+        // Consider the cloud "has data" if ANY entity type is present — not just leads.
+        const nonEmpty = (o) => !!(o && ((o.leads && o.leads.length) || (o.brokers && o.brokers.length) || (o.customers && o.customers.length) || (o.projects && o.projects.length) || (o.activities && o.activities.length)));
+        if (nonEmpty(state)) {
+          DB = Object.assign(emptyDB(), state);                 // cloud has data → use it
         } else {
-          // Cloud empty: migrate any existing local data up once, then use it.
           let local = null; try { local = JSON.parse(localStorage.getItem(KEY) || "null"); } catch {}
-          DB = Object.assign(emptyDB(), (local && local.leads && local.leads.length) ? local : {});
-          await FB.saveState(DB).catch(() => {});
+          if (nonEmpty(local)) {
+            DB = Object.assign(emptyDB(), local);
+            await FB.saveState(DB).catch(() => {});             // one-time upload of existing local data
+          } else {
+            // Genuinely empty everywhere — DO NOT overwrite the cloud with a blank doc.
+            DB = state ? Object.assign(emptyDB(), state) : emptyDB();
+          }
         }
         // Security: never keep a local copy of cloud data (nothing readable without login).
         try { localStorage.removeItem(KEY); } catch {}
