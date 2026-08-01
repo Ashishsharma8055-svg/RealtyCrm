@@ -1822,6 +1822,7 @@ function startCloudMode(FB) {
         try { localStorage.removeItem(KEY); } catch {}
         try { await importWebEnquiries(); } catch (e) {}
         bootApp();
+        startCloudWatch();
       } catch (e) {
         renderLogin("cloud", "Signed in, but couldn't reach Firestore. Create the database and publish the rules, then reload.");
       }
@@ -1829,6 +1830,21 @@ function startCloudMode(FB) {
       DB = emptyDB();
       renderLogin("cloud");
     }
+  });
+}
+// Live cross-device sync: when another device saves, refresh this one automatically.
+let _cloudWatch = null;
+function startCloudWatch() {
+  if (_cloudWatch || !CLOUD || typeof CLOUD.watchState !== "function") return;
+  _cloudWatch = CLOUD.watchState((data) => {
+    if (!data) return;
+    try { if (JSON.stringify(data) === JSON.stringify(DB)) return; } catch (e) {} // our own echo / no real change
+    DB = Object.assign(emptyDB(), data);
+    // Don't yank a form out from under the user — refresh only when no modal is open.
+    const host = document.getElementById("modalHost");
+    const modalOpen = host && host.innerHTML && host.innerHTML.trim();
+    if (!modalOpen) { renderNav(); go(active); }
+    toast("Updated from another device ☁");
   });
 }
 function bootApp() {

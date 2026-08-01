@@ -60,7 +60,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, updatePassword, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
     // ============================================================
     //  RUN MODE — flip this ONE line:
     //    "local" = runs instantly in VS Code, no setup. Login: admin / admin123
@@ -93,6 +93,12 @@
         changePassword: (np) => updatePassword(auth.currentUser, np),
         loadState: async () => { const s = await getDoc(ref); return s.exists() ? s.data() : null; },
         saveState: (data) => setDoc(ref, data),
+        // Live sync: fire cb whenever the cloud data changes on ANOTHER device.
+        // Ignores our own in-flight writes so it doesn't loop.
+        watchState: (cb) => onSnapshot(ref, (snap) => {
+          if (snap.metadata.hasPendingWrites) return;   // our own optimistic write — skip
+          if (snap.exists()) cb(snap.data());
+        }),
         // Website leads: the public site writes each enquiry into `enquiries`.
         // The CRM reads them here and imports new ones as leads (see app.js).
         loadEnquiries: async () => {
