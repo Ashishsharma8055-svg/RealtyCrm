@@ -23,8 +23,17 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 function emptyDB() { return { leads: [], brokers: [], customers: [], projects: [], activities: [], seq: 0 }; }
 let DB = load();
 function load() { try { const raw = localStorage.getItem(KEY); return raw ? JSON.parse(raw) : emptyDB(); } catch { return emptyDB(); } }
-let CLOUD = null, cloudSaveTimer = null;
-function scheduleCloudSave() { if (!CLOUD) return; clearTimeout(cloudSaveTimer); cloudSaveTimer = setTimeout(() => { if (CLOUD.auth && CLOUD.auth.currentUser) CLOUD.saveState(DB).catch(() => toast("Cloud save failed (offline?)")); }, 900); }
+let CLOUD = null, cloudSaveTimer = null, _cloudDirty = false, _cloudBooted = false;
+function scheduleCloudSave() {
+  if (!CLOUD) return;
+  _cloudDirty = true;                 // we have local changes not yet in the cloud
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(() => {
+    if (CLOUD.auth && CLOUD.auth.currentUser) {
+      CLOUD.saveState(DB).then(() => { _cloudDirty = false; }).catch(() => { toast("Cloud save failed (offline?)"); });
+    } else { _cloudDirty = false; }
+  }, 900);
+}
 function save() { if (CLOUD) { scheduleCloudSave(); } else { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch {} } }
 function nextId() { DB.seq = (DB.seq || 0) + 1; return DB.seq; }
 function all(entity) { return DB[entity].slice().sort((a, b) => b.id - a.id); }
@@ -1840,6 +1849,7 @@ function startCloudMode(FB) {
   renderLoading("Connecting…");
   FB.onAuth(async (user) => {
     if (user) {
+      if (_cloudBooted) return;       // already loaded once — don't reload/overwrite on token refresh
       renderLoading("Loading your data…");
       try {
         const state = await FB.loadState();
@@ -1854,12 +1864,14 @@ function startCloudMode(FB) {
         // Security: never keep a local copy of cloud data (nothing readable without login).
         try { localStorage.removeItem(KEY); } catch {}
         try { await importWebEnquiries(); } catch (e) {}
+        _cloudBooted = true;
         bootApp();
         startCloudWatch();
       } catch (e) {
         renderLogin("cloud", "Signed in, but couldn't reach Firestore. Create the database and publish the rules, then reload.");
       }
     } else {
+      _cloudBooted = false;
       DB = emptyDB();
       renderLogin("cloud");
     }
@@ -1871,6 +1883,8 @@ function startCloudWatch() {
   if (_cloudWatch || !CLOUD || typeof CLOUD.watchState !== "function") return;
   _cloudWatch = CLOUD.watchState((data) => {
     if (!data) return;
+    if (_cloudDirty) return;          // we have unsaved local changes — never overwrite them
+    if (document.getElementById("modalHost") && document.getElementById("modalHost").innerHTML.trim()) return; // mid-edit
     try { if (JSON.stringify(data) === JSON.stringify(DB)) return; } catch (e) {} // our own echo / no real change
     DB = Object.assign(emptyDB(), data);
     // Don't yank a form out from under the user — refresh only when no modal is open.
