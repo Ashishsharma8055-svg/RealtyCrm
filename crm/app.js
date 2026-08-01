@@ -1877,23 +1877,13 @@ function startCloudMode(FB) {
     }
   });
 }
-// Live cross-device sync: when another device saves, refresh this one automatically.
+// Live auto-sync is DISABLED on purpose. Automatically overwriting this device's
+// data with another client's copy of the single shared document is race-prone and
+// was causing records to disappear. Cross-device sync now happens safely on page
+// load (your data is read when you sign in / refresh). To see changes made on
+// another device, just refresh the page — your in-progress data is never clobbered.
 let _cloudWatch = null;
-function startCloudWatch() {
-  if (_cloudWatch || !CLOUD || typeof CLOUD.watchState !== "function") return;
-  _cloudWatch = CLOUD.watchState((data) => {
-    if (!data) return;
-    if (_cloudDirty) return;          // we have unsaved local changes — never overwrite them
-    if (document.getElementById("modalHost") && document.getElementById("modalHost").innerHTML.trim()) return; // mid-edit
-    try { if (JSON.stringify(data) === JSON.stringify(DB)) return; } catch (e) {} // our own echo / no real change
-    DB = Object.assign(emptyDB(), data);
-    // Don't yank a form out from under the user — refresh only when no modal is open.
-    const host = document.getElementById("modalHost");
-    const modalOpen = host && host.innerHTML && host.innerHTML.trim();
-    if (!modalOpen) { renderNav(); go(active); }
-    toast("Updated from another device ☁");
-  });
-}
+function startCloudWatch() { /* disabled — see note above */ }
 function bootApp() {
   document.body.classList.remove("locked");
   const g = document.getElementById("authGate"); if (g) { g.hidden = true; g.innerHTML = ""; }
