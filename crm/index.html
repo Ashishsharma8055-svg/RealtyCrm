@@ -92,7 +92,9 @@
         signOut: () => signOut(auth),
         changePassword: (np) => updatePassword(auth.currentUser, np),
         loadState: async () => { const s = await getDoc(ref); return s.exists() ? s.data() : null; },
-        saveState: (data) => setDoc(ref, data),
+        // Strip undefined values (JSON round-trip drops them) — Firestore REJECTS the
+        // whole document if any field is undefined, which was silently losing all data.
+        saveState: (data) => setDoc(ref, JSON.parse(JSON.stringify(data))),
         // Live sync: fire cb whenever the cloud data changes on ANOTHER device.
         // Ignores our own in-flight writes so it doesn't loop.
         watchState: (cb) => onSnapshot(ref, (snap) => {

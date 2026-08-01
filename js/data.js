@@ -138,7 +138,7 @@ const FirebaseAdapter = (()=>{
     let app; try{ app=appMod.getApp(); }catch(e){ app=appMod.initializeApp(window.APP_CONFIG.firebase); }
     fb={ db:fsMod.getFirestore(app), auth:authMod.getAuth(app), fs:fsMod, authM:authMod, app }; return fb; }
   async function all(name){ const {db,fs}=await ensure(); const snap=await fs.getDocs(fs.collection(db,name)); return snap.docs.map(d=>({id:d.id,...d.data()})); }
-  async function put(name,id,data){ const {db,fs}=await ensure(); const ref=id?fs.doc(db,name,id):fs.doc(fs.collection(db,name)); await fs.setDoc(ref,data,{merge:true}); return {id:ref.id,...data}; }
+  async function put(name,id,data){ const {db,fs}=await ensure(); const ref=id?fs.doc(db,name,id):fs.doc(fs.collection(db,name)); const clean=JSON.parse(JSON.stringify(data)); await fs.setDoc(ref,clean,{merge:true}); return {id:ref.id,...data}; }
   async function del(name,id){ const {db,fs}=await ensure(); await fs.deleteDoc(fs.doc(db,name,id)); }
   return {
     ensure, _fb:()=>fb,
