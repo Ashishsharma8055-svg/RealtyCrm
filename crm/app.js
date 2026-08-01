@@ -92,6 +92,8 @@ function fmtDate(s) { return s ? String(s).slice(0, 16).replace("T", " ") : "—
 function timeOf(s) { return s && s.length >= 16 ? String(s).slice(11, 16) : ""; }
 function badge(v) { return v ? `<span class="badge b-${/^[A-Za-z+ ]+$/.test(v) ? esc(v).replace(/[^A-Za-z]/g, "") : "default"}">${esc(v)}</span>` : "—"; }
 function toast(msg) { const t = document.getElementById("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2200); }
+// Tap-to-dial phone number (works on mobile). Stops row clicks from firing.
+function telLink(m) { const s = (m || "").toString().trim(); if (!s) return "—"; const d = s.replace(/[^\d+]/g, ""); return `<a href="tel:${esc(d)}" class="tel" onclick="event.stopPropagation()">${esc(s)}</a>`; }
 function stars(n) { n = Number(n) || 0; return `<span class="stars">${"★".repeat(n)}<span class="off">${"★".repeat(5 - n)}</span></span>`; }
 
 /* ---------- Follow-up model ---------- */
@@ -397,22 +399,22 @@ function gcalEventBody(title, atStr, details) {
   return { summary: title, description: details || "", start: { dateTime: s.toISOString() }, end: { dateTime: e.toISOString() } };
 }
 // Create the event, or PATCH the existing one (edit/modify) — keeps one event per record.
-async function gcalUpsertEvent(kind, live, title) {
+async function gcalUpsertEvent(kind, live, title, desc) {
   if (!gcalToken || !live.followup_at) return;
   const base = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GCAL_CALENDAR_ID)}/events`;
   try {
     if (live.gcal_event_id) {
       const r = await fetch(`${base}/${encodeURIComponent(live.gcal_event_id)}`, {
         method: "PATCH", headers: { "Authorization": "Bearer " + gcalToken, "Content-Type": "application/json" },
-        body: JSON.stringify(gcalEventBody(title, live.followup_at, "")),
+        body: JSON.stringify(gcalEventBody(title, live.followup_at, desc)),
       });
       if (r.ok) toast("Google Calendar updated");
-      else if (r.status === 404) { live.gcal_event_id = ""; save(); return gcalUpsertEvent(kind, live, title); } // event was deleted → recreate
+      else if (r.status === 404) { live.gcal_event_id = ""; save(); return gcalUpsertEvent(kind, live, title, desc); } // event was deleted → recreate
       else if (r.status === 401) gcalToken = null;
     } else {
       const r = await fetch(base, {
         method: "POST", headers: { "Authorization": "Bearer " + gcalToken, "Content-Type": "application/json" },
-        body: JSON.stringify(gcalEventBody(title, live.followup_at, "")),
+        body: JSON.stringify(gcalEventBody(title, live.followup_at, desc)),
       });
       if (r.ok) { const data = await r.json(); live.gcal_event_id = data.id; save(); toast("Added to Google Calendar"); }
       else if (r.status === 401) gcalToken = null;
@@ -432,11 +434,41 @@ async function gcalDeleteEvent(live) {
 }
 // One entry point used everywhere a follow-up is set, changed or cleared:
 // add if new, edit/modify if it already has an event, delete if the follow-up is gone.
+// First number out of a comma/slash-separated list.
+function firstNum(s) { return (s || "").toString().split(/[,/]/)[0].trim(); }
+// Build the calendar title + the phone number to dial, per record type.
+//   Customer      -> "CL <name> <mobile>"
+//   Broker/CP     -> "Br <name> <mobile> · <firm>"
+//   Enquiry CP+CL -> "CP+CL <CP name> + <customer> <mobile>"
+//   Enquiry CP    -> "CP <CP name> · <firm> <mobile>"
+//   Enquiry CL    -> "CL <customer> <mobile>"
+function formatGcal(kind, r) {
+  if (kind === "broker") {
+    const num = firstNum(r.mobiles || r.mobile);
+    return { title: `Br ${r.name || ""}${num ? " " + num : ""}${r.firm ? " · " + r.firm : ""}`.trim(), num };
+  }
+  if (kind === "customer") {
+    const num = firstNum(r.mobile1 || r.mobile);
+    return { title: `CL ${r.name || ""}${num ? " " + num : ""}`.trim(), num };
+  }
+  const et = r.enquiry_type || "CL", cust = r.customer_name || "", cmob = r.customer_mobile || "";
+  if (et === "CP+CL") {
+    const num = cmob || r.source_mobile || "";
+    return { title: `CP+CL ${r.source_name || ""} + ${cust}${num ? " " + num : ""}`.trim(), num };
+  }
+  if (et === "CP Details Only" || et === "CP") {
+    const num = r.source_mobile || "";
+    return { title: `CP ${r.source_name || ""}${r.source_firm ? " · " + r.source_firm : ""}${num ? " " + num : ""}`.trim(), num };
+  }
+  return { title: `CL ${cust}${cmob ? " " + cmob : ""}`.trim(), num: cmob };
+}
 function gcalMaybeInsert(kind, row) {
   if (!row || !gcalEnabled() || !gcalConnected()) return;
-  const live = kind === "broker" ? (brokerById(row.id) || row) : (leadById(row.id) || row);
-  const title = (kind === "broker" ? "Broker meeting: " : "Follow-up: ") + (live.customer_name || live.name || live.lead_number || "CRM meeting");
-  if (live.followup_at) gcalRun(() => gcalUpsertEvent(kind, live, title));
+  const live = kind === "broker" ? (brokerById(row.id) || row) : (kind === "customer" ? ((DB.customers.find((c) => c.id === row.id)) || row) : (leadById(row.id) || row));
+  const f = formatGcal(kind, live);
+  // Number in the notes too — iOS/iPhone auto-detects it and lets you tap to dial.
+  const desc = [f.num ? "📞 " + f.num : "", live.requirement ? "Requirement: " + live.requirement : "", live.stage ? "Stage: " + live.stage : ""].filter(Boolean).join("\n");
+  if (live.followup_at) gcalRun(() => gcalUpsertEvent(kind, live, f.title, desc));
   else if (live.gcal_event_id) gcalRun(() => gcalDeleteEvent(live));
 }
 function refreshCalendars() { document.querySelectorAll(".js-calwrap").forEach((el) => (el.innerHTML = calendarHtml())); }
@@ -549,7 +581,7 @@ function leadRow(l) {
   return `<tr>
     <td><input type="checkbox" class="bulk" data-id="${l.id}"></td>
     <td class="mono nowrap">${esc(l.lead_number)}</td>
-    <td><div class="rowlink" data-profile="lead:${l.id}" style="font-weight:600">${esc(l.customer_name) || "—"}</div><div class="fu-meta">${esc(l.customer_mobile)}</div></td>
+    <td><div class="rowlink" data-profile="lead:${l.id}" style="font-weight:600">${esc(l.customer_name) || "—"}</div><div class="fu-meta">${telLink(l.customer_mobile)}</div></td>
     <td>${cpCell(l)}</td>
     <td class="nowrap">${esc(l.requirement) || "—"}</td>
     <td class="nowrap">${esc(l.budget) || "—"}</td>
@@ -761,13 +793,14 @@ function cpCell(l) {
   const cp = (l.source_name || "").trim();
   if (!cp) return `<span class="muted">—</span>`;
   const bk = DB.brokers.find((b) => (b.name || "").trim().toLowerCase() === cp.toLowerCase());
-  const sub = [l.source_firm || (bk ? bk.firm : ""), l.source_mobile].filter(Boolean).map(esc).join(" · ");
+  const firm = l.source_firm || (bk ? bk.firm : "");
+  const sub = [firm ? esc(firm) : "", l.source_mobile ? telLink(l.source_mobile) : ""].filter(Boolean).join(" · ");
   const name = bk ? `<span class="rowlink" data-profile="broker:${bk.id}">${esc(cp)}</span>` : `<b>${esc(cp)}</b>`;
   return `${name}${sub ? `<div class="fu-meta">${sub}</div>` : ""}`;
 }
 function repLeadTable(L, limit) {
   return repTable(["Lead #", "Customer", "Source / CP", "Requirement", "Budget", "Stage", "Rating", "Status", ""],
-    L.slice().sort((a, b) => b.id - a.id).slice(0, limit || 60).map((l) => [`<span class="mono">${esc(l.lead_number)}</span>`, `<span class="rowlink" data-profile="lead:${l.id}">${esc(l.customer_name) || "—"}</span><div class="fu-meta">${esc(l.customer_mobile)}</div>`, cpCell(l), esc(l.requirement) || "—", `<span class="chip-budget">${esc(l.budget) || "—"}</span>`, esc(l.stage) || "—", badge(l.rating), badge(l.status), `<button class="btn drill-open sm" data-profile="lead:${l.id}">Open ›</button>`]),
+    L.slice().sort((a, b) => b.id - a.id).slice(0, limit || 60).map((l) => [`<span class="mono">${esc(l.lead_number)}</span>`, `<span class="rowlink" data-profile="lead:${l.id}">${esc(l.customer_name) || "—"}</span><div class="fu-meta">${telLink(l.customer_mobile)}</div>`, cpCell(l), esc(l.requirement) || "—", `<span class="chip-budget">${esc(l.budget) || "—"}</span>`, esc(l.stage) || "—", badge(l.rating), badge(l.status), `<button class="btn drill-open sm" data-profile="lead:${l.id}">Open ›</button>`]),
     "No enquiries in this selection.");
 }
 function hbars(data, color, rf) {
@@ -970,7 +1003,7 @@ function openProjectCP(project, firm) {
   ];
   const table = rows.length ? `<div class="table-wrap drill-table"><table><thead><tr>${["Lead #", "Customer", "Budget", "Requirement", "Stage", "Rating", "Status", ""].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.slice().sort((a, b) => b.id - a.id).map((l) => `<tr>
     <td class="mono nowrap">${esc(l.lead_number)}</td>
-    <td><div style="font-weight:600">${esc(l.customer_name) || "—"}</div><div class="fu-meta">${esc(l.customer_mobile)}</div></td>
+    <td><div style="font-weight:600">${esc(l.customer_name) || "—"}</div><div class="fu-meta">${telLink(l.customer_mobile)}</div></td>
     <td><span class="chip-budget">${esc(l.budget) || "—"}</span></td><td>${esc(l.requirement) || "—"}</td><td>${esc(l.stage) || "—"}</td><td>${badge(l.rating)}</td><td>${badge(l.status)}</td>
     <td class="right"><button class="btn drill-open sm" data-profile="lead:${l.id}">Open ›</button></td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">No leads.</div>`;
   modal(`${firm} — ${project}`, drillStats(chips) + table, true);
@@ -1017,7 +1050,7 @@ function repMatch() {
     (!m.project || (l.projects_shared || []).includes(m.project)) &&
     (!m.etype || l.enquiry_type === m.etype));
   const custs = uniqList(matches.map((l) => (l.customer_name || "") + "|" + (l.customer_mobile || ""))).filter((x) => x.replace("|", ""));
-  const rows = matches.slice().sort((a, b) => b.id - a.id).map((l) => [`<span class="rowlink" data-profile="lead:${l.id}">${esc(l.customer_name) || l.lead_number}</span><div class="fu-meta">${esc(l.customer_mobile)}</div>`, esc(l.requirement) || "—", `<span class="chip-budget">${esc(l.budget) || "—"}</span>`, esc(l.enquiry_type) || "—", tagchips(l.projects_shared || [], "indigo"), esc(l.stage) || "—", badge(l.rating), badge(l.status), cpCell(l), `<button class="btn drill-open sm" data-profile="lead:${l.id}">Open ›</button>`]);
+  const rows = matches.slice().sort((a, b) => b.id - a.id).map((l) => [`<span class="rowlink" data-profile="lead:${l.id}">${esc(l.customer_name) || l.lead_number}</span><div class="fu-meta">${telLink(l.customer_mobile)}</div>`, esc(l.requirement) || "—", `<span class="chip-budget">${esc(l.budget) || "—"}</span>`, esc(l.enquiry_type) || "—", tagchips(l.projects_shared || [], "indigo"), esc(l.stage) || "—", badge(l.rating), badge(l.status), cpCell(l), `<button class="btn drill-open sm" data-profile="lead:${l.id}">Open ›</button>`]);
   const table = repTable(["Customer", "Requirement", "Budget", "Type", "Projects shared", "Stage", "Rating", "Status", "Source/CP", ""], rows, "No enquiries match these criteria yet.");
   const summary = `<div class="rep-hero rep-hero-sm">${repCard(matches.length, "Matching Enquiries", "", "indigo")}${repCard(custs.length, "Interested Customers", "", "teal")}${repCard(matches.filter((l) => l.status === "Active").length, "Still Active", "", "green")}${repCard(matches.filter((l) => l.status === "Booked").length, "Already Booked", "", "gray")}</div>`;
   const inner = `<p class="mf-help">Pick any combination of requirement, budget, project and enquiry type — for example when a unit becomes available — to instantly find the CP+CL / CL enquiries and customers that match.</p>` + controls + summary + `<div class="rep-subhead" style="margin-top:16px">Matching enquiries &amp; interested customers</div>` + table;
@@ -1123,7 +1156,7 @@ function listLeads(title, rows) {
   ];
   const body = rows.length ? `<div class="table-wrap drill-table"><table><thead><tr>${["Lead #", "Customer", "Req.", "Budget", "Stage", "Rating", "Status", ""].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.slice().sort((a, b) => b.id - a.id).map((l) => `<tr>
     <td class="mono nowrap">${esc(l.lead_number)}</td>
-    <td><div class="cust-cell">${miniAvatar(l.customer_name)}<div><div class="cust-nm">${esc(l.customer_name) || "—"}</div><div class="fu-meta">${esc(l.customer_mobile)}</div></div></div></td>
+    <td><div class="cust-cell">${miniAvatar(l.customer_name)}<div><div class="cust-nm">${esc(l.customer_name) || "—"}</div><div class="fu-meta">${telLink(l.customer_mobile)}</div></div></div></td>
     <td>${esc(l.requirement) || "—"}</td>
     <td class="nowrap">${l.budget ? `<span class="chip-budget">${esc(l.budget)}</span>` : "—"}</td>
     <td>${esc(l.stage) || "—"}</td><td>${badge(l.rating)}</td><td>${badge(l.status)}</td>
@@ -1959,7 +1992,7 @@ async function populateDigital() {
       <td><input type="checkbox" class="bulk" data-id="${esc(String(e.id))}"></td>
       <td class="mono nowrap"><b>${esc(e.code || "—")}</b></td>
       <td>${esc(e.user) || "—"}${agent}</td>
-      <td class="nowrap">${esc(e.mobile) || "—"}</td>
+      <td class="nowrap">${telLink(e.mobile)}</td>
       <td style="max-width:300px">${webInterestSummary(e)}</td>
       <td class="nowrap fu-meta">${fmtDT(e.ts)}</td>
       <td>${statusCell}${e.agent && e.agent.isAgent ? " " + badge("Agent") : ""}</td>
