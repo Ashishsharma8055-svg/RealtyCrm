@@ -142,11 +142,14 @@ const FirebaseAdapter = (()=>{
   async function del(name,id){ const {db,fs}=await ensure(); await fs.deleteDoc(fs.doc(db,name,id)); }
   return {
     ensure, _fb:()=>fb,
-    async projects(){ return all("projects"); },
-    async project(id){ const {db,fs}=await ensure(); const s=await fs.getDoc(fs.doc(db,"projects",id)); return s.exists()?{id:s.id,...s.data()}:null; },
+    // SAFETY: if the cloud catalog is empty (never migrated / offline), fall back to
+    // the built-in catalogue so the public site NEVER goes blank.
+    async projects(){ const l=await all("projects"); return l.length?l:clone(SEED_PROJECTS); },
+    async projectsRaw(){ return all("projects"); },   // no fallback — used by the migration check
+    async project(id){ const {db,fs}=await ensure(); const s=await fs.getDoc(fs.doc(db,"projects",id)); if(s.exists()) return {id:s.id,...s.data()}; const seed=SEED_PROJECTS.find(p=>p.id===id); return seed?clone(seed):null; },
     async saveProject(p){ const id=p.id; const d={...p}; delete d.id; return put("projects",id,d); },
     async deleteProject(id){ return del("projects",id); },
-    async inventory(){ return all("inventory"); },
+    async inventory(){ const l=await all("inventory"); return l.length?l:clone(SEED_INVENTORY); },
     async inventoryFor(name){ const l=await all("inventory"); return l.filter(u=>norm(u.project)===norm(name)); },
     async saveUnit(u){ const id=u.id||(norm(u.project)+"|"+norm(u.unitNo)); const d={...u}; delete d.id; return put("inventory",id,d); },
     async deleteUnit(id){ return del("inventory",id); },
@@ -157,7 +160,7 @@ const FirebaseAdapter = (()=>{
     async partners(){ return all("partners"); },
     async savePartner(p){ const id=p.id; const d={...p}; delete d.id; return put("partners",id,d); },
     async deletePartner(id){ return del("partners",id); },
-    async testimonials(af){ const l=await all("testimonials"); return af?l:l.filter(x=>x.approved); },
+    async testimonials(af){ const l=await all("testimonials"); const list=l.length?l:clone(SEED_TESTIMONIALS); return af?list:list.filter(x=>x.approved); },
     async addTestimonial(t){ t.approved=false; t.ts=Date.now(); return put("testimonials",null,t); },
     async setTestimonialApproved(id,v){ return put("testimonials",id,{approved:v}); },
     async deleteTestimonial(id){ return del("testimonials",id); },

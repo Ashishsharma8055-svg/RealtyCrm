@@ -2481,8 +2481,9 @@ function exportTestimonials() {
 // cloud already has projects). Preserves your real/imported data.
 async function migrateWebCatalogToCloud() {
   const S = WS(); if (!S || S.mode !== "firebase") return;
-  let cloud = []; try { cloud = await S.projects(); } catch (e) { return; }
-  if (cloud && cloud.length) return; // cloud already seeded — nothing to do
+  const fb = S.firebase; if (!fb || typeof fb.projectsRaw !== "function") return;
+  let raw = []; try { raw = await fb.projectsRaw(); } catch (e) { return; }
+  if (raw && raw.length) return; // cloud genuinely has the catalog — nothing to do
   let local = null; try { local = JSON.parse(localStorage.getItem("cnd_db_v2") || "null"); } catch (e) {}
   // Fall back to the built-in BPTP catalogue if this device has no local data.
   const projects = (local && local.projects && local.projects.length) ? local.projects : (typeof SEED_PROJECTS !== "undefined" ? SEED_PROJECTS : []);
