@@ -7,13 +7,14 @@
   document.addEventListener("DOMContentLoaded", init);
 
   async function init() {
-    initNav(); paintCommon();
+    const safe = (fn) => { try { return fn(); } catch (e) { console.warn("[project]", e); } };
+    safe(initNav); safe(paintCommon);
     const id = new URLSearchParams(location.search).get("id");
-    PROJECT = id ? await Store.project(id) : null;
+    try { PROJECT = id ? await Store.project(id) : null; } catch (e) { PROJECT = null; console.warn("[project] load failed", e); }
     if (!PROJECT) { document.getElementById("app").innerHTML = `<div class="container" style="padding:160px 0;text-align:center"><h2>Project not found</h2><a class="btn btn-gold" href="index.html">← Back to all projects</a></div>`; return; }
     document.title = PROJECT.name + " · Coffee & Deals";
-    renderProject(); wireRail(); buildROI(); wireOTP(); wireEnquiry();
-    initReveal(); initSmoothScroll();
+    safe(renderProject); safe(wireRail); safe(buildROI); safe(wireOTP); safe(wireEnquiry);
+    safe(initReveal); safe(initSmoothScroll);
   }
 
   function paintCommon() {

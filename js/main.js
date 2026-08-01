@@ -6,19 +6,23 @@
   document.addEventListener("DOMContentLoaded", init);
 
   async function init() {
-    paintBrand();
-    initNav();
-    ALL_PROJECTS = await Store.projects();
-    populateFilters();
-    renderProjects(ALL_PROJECTS);
-    await renderTestimonials();
-    wireSearch();
-    wireTestimonialModal();
-    initFAQ();
-    initCounters();
-    initReveal();
-    initSmoothScroll();
-    initMarketTicker();
+    const safe = (fn) => { try { return fn(); } catch (e) { console.warn("[home]", e); } };
+    // 1) The static design first — this ALWAYS runs, so the page can never go blank
+    //    even if the database is slow, empty, or unreachable.
+    safe(paintBrand);
+    safe(initNav);
+    safe(initFAQ);
+    safe(initCounters);
+    safe(initReveal);
+    safe(initSmoothScroll);
+    safe(initMarketTicker);
+    safe(wireSearch);
+    safe(wireTestimonialModal);
+    // 2) Data-driven parts, each isolated so a failure only affects that part.
+    try { ALL_PROJECTS = await Store.projects(); } catch (e) { ALL_PROJECTS = []; console.warn("[home] projects load failed", e); }
+    safe(populateFilters);
+    safe(() => renderProjects(ALL_PROJECTS));
+    try { await renderTestimonials(); } catch (e) { console.warn("[home] testimonials load failed", e); }
   }
 
   function initMarketTicker() {
