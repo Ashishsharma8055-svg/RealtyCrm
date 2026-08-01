@@ -30,9 +30,14 @@ function scheduleCloudSave() {
   clearTimeout(cloudSaveTimer);
   cloudSaveTimer = setTimeout(() => {
     if (CLOUD.auth && CLOUD.auth.currentUser) {
-      CLOUD.saveState(DB).then(() => { _cloudDirty = false; }).catch(() => { toast("Cloud save failed (offline?)"); });
-    } else { _cloudDirty = false; }
-  }, 900);
+      CLOUD.saveState(DB)
+        .then(() => { _cloudDirty = false; toast("Saved to cloud ✓ (build v9)"); })
+        .catch((e) => { console.error("CLOUD SAVE FAILED:", e); toast("⚠️ SAVE FAILED: " + ((e && (e.code || e.message)) || String(e))); });
+    } else {
+      toast("⚠️ Not signed in — NOT saved. Please sign in again.");
+      _cloudDirty = false;
+    }
+  }, 400);
 }
 function save() { if (CLOUD) { scheduleCloudSave(); } else { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch {} } }
 function nextId() { DB.seq = (DB.seq || 0) + 1; return DB.seq; }
