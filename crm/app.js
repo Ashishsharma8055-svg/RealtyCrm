@@ -1850,7 +1850,7 @@ function startCloudWatch() {
 function bootApp() {
   document.body.classList.remove("locked");
   const g = document.getElementById("authGate"); if (g) { g.hidden = true; g.innerHTML = ""; }
-  try { syncWebProjects(); } catch (e) {}
+  (async () => { try { await migrateWebCatalogToCloud(); } catch (e) {} try { await syncWebProjects(); } catch (e) {} })();
   // Sidebar status indicator: cloud (synced) vs local (this device).
   const sm = document.getElementById("sideMode"), sd = document.getElementById("sideDot");
   if (sm) sm.textContent = CLOUD ? "Cloud · synced" : "Local · this device";
@@ -2472,6 +2472,30 @@ function exportTestimonials() {
   const rows = _testi.map((t) => [t.name || "", t.role || "", t.rating || "", t.text || "", t.approved ? "Yes" : "No"]);
   const csv = [head].concat(rows).map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\n");
   const b = new Blob([csv], { type: "text/csv" }), a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "coffeeanddeals-testimonials.csv"; a.click(); URL.revokeObjectURL(a.href); toast("Exported");
+}
+
+/* ====================== ONE-TIME: local catalog → cloud ====================== */
+// The catalog (projects/inventory/testimonials) used to live only in this browser.
+// The first time an admin opens the cloud CRM, upload it to Firestore so every
+// device — and the public website — reads the same data. Runs once (skips if the
+// cloud already has projects). Preserves your real/imported data.
+async function migrateWebCatalogToCloud() {
+  const S = WS(); if (!S || S.mode !== "firebase") return;
+  let cloud = []; try { cloud = await S.projects(); } catch (e) { return; }
+  if (cloud && cloud.length) return; // cloud already seeded — nothing to do
+  let local = null; try { local = JSON.parse(localStorage.getItem("cnd_db_v2") || "null"); } catch (e) {}
+  // Fall back to the built-in BPTP catalogue if this device has no local data.
+  const projects = (local && local.projects && local.projects.length) ? local.projects : (typeof SEED_PROJECTS !== "undefined" ? SEED_PROJECTS : []);
+  const inventory = (local && local.inventory && local.inventory.length) ? local.inventory : (typeof SEED_INVENTORY !== "undefined" ? SEED_INVENTORY : []);
+  const testimonials = (local && local.testimonials && local.testimonials.length) ? local.testimonials : (typeof SEED_TESTIMONIALS !== "undefined" ? SEED_TESTIMONIALS : []);
+  const partners = (local && local.partners && local.partners.length) ? local.partners : [];
+  if (!projects.length && !inventory.length) return;
+  let n = 0;
+  for (const p of projects) { try { await S.saveProject(p); n++; } catch (e) {} }
+  for (const u of inventory) { try { await S.saveUnit(u); } catch (e) {} }
+  for (const t of testimonials) { try { const nt = await S.addTestimonial({ ...t }); if (t.approved && nt && nt.id) await S.setTestimonialApproved(nt.id, true); } catch (e) {} }
+  for (const pr of partners) { try { await S.savePartner(pr); } catch (e) {} }
+  if (n) toast("Catalog uploaded to the cloud ☁ — now shared across devices & site");
 }
 
 /* ====================== PROJECT SYNC (internal mirror) ====================== */

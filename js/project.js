@@ -182,35 +182,27 @@
     it.lastTs = ts;
     if (unit && !it.units.includes(unit)) it.units.push(unit);
   }
-  // ONE lifetime record per visitor (matched on mobile). It carries a unique code and
-  // accumulates every project viewed + every unit opened, with first/last dates.
+  // The visitor's OWN enquiry record is kept in their browser (visitors can't read
+  // the shared leads list — that's admin-only). It accumulates every project/unit
+  // they view, and each change is pushed to the cloud (via LeadRelay) where the CRM
+  // reads it. One stable record per visitor mobile, so no duplicates.
+  function myEnqKey(mobile) { return "cnd_enq_" + (mobile || "").toString().replace(/\D/g, "").slice(-10); }
+  function getMyEnq(mobile) { try { return JSON.parse(localStorage.getItem(myEnqKey(mobile)) || "null"); } catch (e) { return null; } }
+  function saveMyEnq(rec) { try { localStorage.setItem(myEnqKey(rec.mobile), JSON.stringify(rec)); } catch (e) {} }
   async function upsertEnquiry(name, mobile, project, unit, agent) {
-    const key = s => (s || "").toString().replace(/\D/g, "").slice(-10);
     const now = Date.now();
     const isUnit = unit && unit !== "(inventory view)";
     const agentObj = agent && agent.isAgent ? { isAgent: true, firm: agent.firm || "", designation: agent.designation || "" } : null;
-    let list = [];
-    try { list = await Store.enquiries(); } catch (e) {}
-    let rec = list.find(e => key(e.mobile) === key(mobile));
-    if (!rec) {
-      rec = { user: name, mobile, code: genCode(), status: "Open", createdTs: now, ts: now, interests: [] };
-      if (agentObj) rec.agent = agentObj;
-      addInterest(rec, project, isUnit ? unit : null, now);
-      try { await Store.addEnquiry(rec); } catch (e) {}
-      try { if (window.LeadRelay) window.LeadRelay.push(rec); } catch (e) {}
-      return;
-    }
+    let rec = getMyEnq(mobile);
+    if (!rec) rec = { user: name, mobile, code: genCode(), status: "Open", createdTs: now, ts: now, interests: [] };
     if (agentObj) rec.agent = agentObj;
-    if (!Array.isArray(rec.interests)) { // migrate old per-project shape
-      rec.interests = [];
-      if (rec.project) addInterest(rec, rec.project, (rec.unit && rec.unit !== "(inventory view)") ? rec.unit : null, rec.ts || now);
-    }
     if (name) rec.user = name;
     if (!rec.code) rec.code = genCode();
     if (!rec.createdTs) rec.createdTs = rec.ts || now;
     rec.ts = now; rec.status = rec.status || "Open";
+    if (!Array.isArray(rec.interests)) rec.interests = [];
     addInterest(rec, project, isUnit ? unit : null, now);
-    try { await Store.updateEnquiry(rec.id, { user: rec.user, code: rec.code, createdTs: rec.createdTs, ts: now, status: rec.status, interests: rec.interests, agent: rec.agent || null }); } catch (e) {}
+    saveMyEnq(rec);
     try { if (window.LeadRelay) window.LeadRelay.push(rec); } catch (e) {}
   }
 

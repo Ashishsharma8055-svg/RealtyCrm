@@ -132,9 +132,9 @@ const LocalAdapter = (()=>{
 const FirebaseAdapter = (()=>{
   let fb=null;
   async function ensure(){ if(fb) return fb;
-    const appMod=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
-    const fsMod=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
-    const authMod=await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js");
+    const appMod=await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
+    const fsMod=await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
+    const authMod=await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js");
     let app; try{ app=appMod.getApp(); }catch(e){ app=appMod.initializeApp(window.APP_CONFIG.firebase); }
     fb={ db:fsMod.getFirestore(app), auth:authMod.getAuth(app), fs:fsMod, authM:authMod, app }; return fb; }
   async function all(name){ const {db,fs}=await ensure(); const snap=await fs.getDocs(fs.collection(db,name)); return snap.docs.map(d=>({id:d.id,...d.data()})); }

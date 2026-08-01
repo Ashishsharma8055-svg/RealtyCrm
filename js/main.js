@@ -221,13 +221,13 @@
       const emailEl = document.getElementById("tEmail"); const email = emailEl ? emailEl.value.trim() : "";
       if (name.length < 2 || text.length < 8) { toast("Please add your name and a few words.", "err"); return; }
       if (isAbusive(text) || isAbusive(name)) { toast("Your comment contains inappropriate language and can't be posted.", "err"); return; }
-      const nt = await Store.addTestimonial({ name, role, text, rating, email });
-      await Store.setTestimonialApproved(nt.id, true);
+      try { await Store.addTestimonial({ name, role, text, rating, email }); }
+      catch (e) { toast("Couldn't submit right now — please try again later.", "err"); return; }
+      // Submitted as pending; it appears on the site once you approve it in the CRM.
       close();
       document.getElementById("tName").value = document.getElementById("tRole").value = document.getElementById("tText").value = "";
       if (emailEl) emailEl.value = "";
-      await renderTestimonials();
-      toast("Thanks! Your review is now live. ☕", "ok");
+      toast("Thanks! Your review has been submitted for approval. ☕", "ok");
     });
   }
 })();

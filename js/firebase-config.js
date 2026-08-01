@@ -22,7 +22,9 @@ window.APP_CONFIG = {
   // the shared cloud database by js/lead-relay.js, so they reach the CRM.
   // Switch to "firebase" later if you want the catalog itself in the cloud too.
   leadRelay: true,          // send website enquiries to the shared cloud DB
-  backend: "local",         // "auto" | "local" | "firebase"
+  // "firebase" = the whole catalog (projects/inventory/testimonials) lives in the
+  // cloud, so edits in the CRM show on every device AND on the public website.
+  backend: "firebase",      // "auto" | "local" | "firebase"
   // Real SMS OTP via Firebase Phone Authentication (+ invisible reCAPTCHA).
   // Requires, in the Firebase console for realtycrm-e2edf:
   //   1) Authentication → Sign-in method → Phone → Enable
