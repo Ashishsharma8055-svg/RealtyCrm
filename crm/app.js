@@ -103,16 +103,18 @@ async function importWebEnquiries() {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     const b = document.getElementById("themeToggle");
     if (b) { b.textContent = dark ? "☀" : "☾"; b.title = dark ? "Switch to light" : "Switch to dark"; }
+    const lbl = document.getElementById("themeLabelSide");
+    if (lbl) lbl.textContent = dark ? "Light mode" : "Dark mode";
   }
+  const toggle = () => {
+    const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    try { localStorage.setItem("rcrm_theme", cur); } catch (e) {}
+    apply(cur);
+  };
   let t = "light"; try { t = localStorage.getItem("rcrm_theme") || "light"; } catch (e) {}
   apply(t);
   const wire = () => {
-    const b = document.getElementById("themeToggle");
-    if (b) b.onclick = () => {
-      const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
-      try { localStorage.setItem("rcrm_theme", cur); } catch (e) {}
-      apply(cur);
-    };
+    ["themeToggle", "themeToggleSide"].forEach((id) => { const b = document.getElementById(id); if (b) b.onclick = toggle; });
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire); else wire();
 })();
@@ -411,6 +413,7 @@ function gcalInitClient() {
         gcalToken = resp.access_token;
         gcalTokenExp = Date.now() + ((resp.expires_in ? resp.expires_in * 1000 : 3600000) - 60000);
         try { localStorage.setItem("rcrm_gcal", "1"); } catch {}
+        try { updateStatusLights(); } catch (e) {}
         if (gcalPending) { const p = gcalPending; gcalPending = null; p(); }
         else toast("Google Calendar connected");
       }
@@ -1920,13 +1923,22 @@ function bootApp() {
   document.body.classList.remove("locked");
   const g = document.getElementById("authGate"); if (g) { g.hidden = true; g.innerHTML = ""; }
   (async () => { try { await migrateWebCatalogToCloud(); } catch (e) {} try { await syncWebProjects(); } catch (e) {} })();
-  // Sidebar status indicator: cloud (synced) vs local (this device).
-  const sm = document.getElementById("sideMode"), sd = document.getElementById("sideDot");
-  if (sm) sm.textContent = CLOUD ? "Cloud · synced" : "Local · this device";
-  if (sd) sd.classList.toggle("cloud", !!CLOUD);
+  updateStatusLights();
   renderNav();
   go("dash");
 }
+// Sidebar status lights: cloud (green when signed-in cloud + online) and Google Calendar.
+function updateStatusLights() {
+  const online = navigator.onLine !== false;
+  const sm = document.getElementById("sideMode"), sd = document.getElementById("sideDot");
+  if (sm) sm.textContent = CLOUD ? (online ? "Cloud · synced" : "Offline · will sync") : "Local · this device";
+  if (sd) sd.classList.toggle("cloud", !!CLOUD && online);
+  const gon = (typeof gcalEnabled === "function" && gcalEnabled() && typeof gcalConnected === "function" && gcalConnected());
+  const gs = document.getElementById("gcalStatus"), gd = document.getElementById("gcalDot");
+  if (gs) gs.textContent = gon ? "Calendar · connected" : "Calendar off";
+  if (gd) gd.classList.toggle("cloud", !!gon);
+}
+if (typeof window !== "undefined") { window.addEventListener("online", function () { try { updateStatusLights(); } catch (e) {} }); window.addEventListener("offline", function () { try { updateStatusLights(); } catch (e) {} }); }
 
 /* ---------- Boot ---------- */
 function whenFB(cb) {

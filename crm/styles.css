@@ -72,12 +72,22 @@ body {
   width: 240px; flex-shrink: 0;
   background: var(--navy); color: #cbd5e1;
   display: flex; flex-direction: column;
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
+.brand-sub { white-space: nowrap; }
+/* Expandable "Data" group */
+.side-data { border: none; }
+.side-summary { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; font-size: 13px; font-weight: 500; color: #cbd5e1; cursor: pointer; list-style: none; }
+.side-summary::-webkit-details-marker { display: none; }
+.side-summary:hover { background: rgba(255,255,255,.08); color: #fff; }
+.side-summary svg { width: 15px; height: 15px; flex-shrink: 0; opacity: .8; }
+.side-chev { margin-left: auto; transition: transform .2s; }
+.side-data[open] .side-chev { transform: rotate(180deg); }
+.side-data .side-btn { padding-left: 34px; }
 .brand { padding: 20px; border-bottom: 1px solid rgba(255,255,255,.1); }
 .brand-name { color: #fff; font-weight: 600; font-size: 19px; letter-spacing: -.01em; }
 .brand-name span { color: #818cf8; }
-.brand-sub { font-size: 11px; color: var(--slate-500); margin-top: 2px; }
+.brand-sub { font-size: 10px; color: var(--slate-500); margin-top: 2px; white-space: nowrap; letter-spacing: -.005em; }
 .nav { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
 .nav a {
   display: flex; align-items: center; gap: 12px;
@@ -627,7 +637,9 @@ tbody tr:hover { background: var(--slate-50); }
   .view, .topbar { padding-left: 16px; padding-right: 16px; }
   /* Dashboard click-through (drill-down) + tables comfortable on phone */
   .modal.wide, .modal.narrow { max-width: 96vw; }
-  .modal-body { padding: 14px; }
+  .modal-body { padding: 14px; max-height: 82vh; -webkit-overflow-scrolling: touch; }
+  .table-wrap { -webkit-overflow-scrolling: touch; }
+  .drill-table table { min-width: 560px; }
   .modal-body table, .drill-table table, .table-wrap table { font-size: 12px; }
   .modal-body th, .modal-body td, .table-wrap th, .table-wrap td { padding: 8px 10px; }
   .drill-stats { flex-wrap: wrap; }
