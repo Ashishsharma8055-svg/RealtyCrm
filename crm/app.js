@@ -96,6 +96,27 @@ async function importWebEnquiries() {
   if (added) toast(added + " new website lead" + (added > 1 ? "s" : "") + " imported");
 }
 
+/* ---------- Light / dark theme (remembered per device) ---------- */
+(function themeSetup() {
+  function apply(t) {
+    const dark = t === "dark";
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    const b = document.getElementById("themeToggle");
+    if (b) { b.textContent = dark ? "☀" : "☾"; b.title = dark ? "Switch to light" : "Switch to dark"; }
+  }
+  let t = "light"; try { t = localStorage.getItem("rcrm_theme") || "light"; } catch (e) {}
+  apply(t);
+  const wire = () => {
+    const b = document.getElementById("themeToggle");
+    if (b) b.onclick = () => {
+      const cur = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      try { localStorage.setItem("rcrm_theme", cur); } catch (e) {}
+      apply(cur);
+    };
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire); else wire();
+})();
+
 /* ---------- Utils ---------- */
 function pad(n) { return String(n).padStart(2, "0"); }
 function now() { return new Date().toISOString().slice(0, 19).replace("T", " "); }
