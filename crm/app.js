@@ -663,9 +663,13 @@ function viewBrokers() {
       <option value="new3">New · last 3 months</option>
     </select>
     <select id="bGrade"><option value="">All grades</option>${GRADES.map((g) => `<option>${g}</option>`).join("")}</select>
+    <button class="btn danger sm" id="bDel">🗑 Delete selected</button>
+    <button class="btn outline sm" id="bTpl">⌄ Template</button>
+    <button class="btn outline sm" id="bImp">↥ Import</button>
+    <button class="btn outline sm" id="bExp">⌄ Export</button>
   </div>
   <div class="card"><div class="table-wrap"><table>
-    <thead><tr>${["Broker", "Firm", "Grade", "Team", "City / Sector", "Enquiries", "Connect", "Follow-up", ""].map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+    <thead><tr><th style="width:34px"><input type="checkbox" class="bulk-all"></th>${["Broker", "Firm", "Grade", "Team", "City / Sector", "Enquiries", "Connect", "Follow-up", ""].map((h) => `<th>${h}</th>`).join("")}</tr></thead>
     <tbody id="brokerRows"></tbody></table><div id="brokerEmpty"></div></div></div>`;
 }
 function brokerRowsHtml() {
@@ -686,10 +690,79 @@ function brokerRowsHtml() {
   if (stats) stats.innerHTML = drillStats(brokerSummaryChips(null, true));
   document.getElementById("brokerEmpty").innerHTML = rows.length ? "" : `<div class="empty">No brokers match these filters.</div>`;
   document.getElementById("brokerRows").innerHTML = rows.map(brokerRow).join("");
+  wireBulkAll("brokerRows");
+}
+/* ---- Brokers: template / import / export / bulk delete (matches the broker database) ---- */
+const BROKER_COLS = ["Broker Name", "Firm / Company", "Mobile Numbers", "Grade", "Team Size", "City", "Sector", "Address", "Connect Status", "Remark"];
+const BROKER_SAMPLE = [["Amit Sharma", "Amit Realty LLP", "98100 11111, 98100 22222", "A", "12", "Gurugram", "Sector 57", "SCO 21, Sector 57", "Live", "Empanelled Jan 2026"]];
+function brokerTemplate() {
+  try {
+    if (typeof XLSX === "undefined") throw new Error("no xlsx");
+    const ws = XLSX.utils.aoa_to_sheet([BROKER_COLS, ...BROKER_SAMPLE]);
+    ws["!cols"] = BROKER_COLS.map((h) => ({ wch: Math.max(14, h.length + 4) }));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Brokers");
+    XLSX.writeFile(wb, "realtycrm-brokers-template.xlsx");
+  } catch (e) {
+    const csv = BROKER_COLS.join(",") + "\n" + BROKER_SAMPLE.map((r) => r.map((s) => `"${s}"`).join(",")).join("\n") + "\n";
+    const b = new Blob([csv], { type: "text/csv" }), a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "realtycrm-brokers-template.csv"; a.click(); URL.revokeObjectURL(a.href);
+  }
+  toast("Broker template downloaded");
+}
+function brokerExport() {
+  const rows = DB.brokers.map((b) => [b.name || "", b.firm || "", b.mobiles || "", b.grade || "", b.team_size || "", b.city || "", b.sector || "", b.address || "", b.connect || "", b.remark || ""]);
+  const csv = [BROKER_COLS].concat(rows).map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const b = new Blob([csv], { type: "text/csv" }), a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "realtycrm-brokers-" + today() + ".csv"; a.click(); URL.revokeObjectURL(a.href); toast("Brokers exported");
+}
+function brokerImport() {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls,.csv";
+  inp.onchange = () => {
+    const f = inp.files[0]; if (!f) return; const r = new FileReader(); const isCsv = /\.csv$/i.test(f.name);
+    r.onload = (ev) => {
+      try {
+        let rows = [];
+        if (!isCsv && typeof XLSX !== "undefined") { const wb = XLSX.read(ev.target.result, { type: "binary" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); }
+        else rows = parseCSV(typeof ev.target.result === "string" ? ev.target.result : new TextDecoder().decode(ev.target.result));
+        if (!rows.length) return toast("Sheet appears empty");
+        let added = 0, merged = 0, skipped = 0;
+        rows.forEach((row) => {
+          const name = (row["Broker Name"] || row.name || row.Name || "").toString().trim();
+          if (!name) { skipped++; return; }
+          const rec = {
+            name,
+            firm: (row["Firm / Company"] || row.firm || row.Firm || "").toString().trim(),
+            mobiles: (row["Mobile Numbers"] || row.mobiles || row.Mobile || "").toString().trim(),
+            grade: ((row["Grade"] || row.grade || "").toString().trim().toUpperCase().charAt(0)) || "B",
+            team_size: (row["Team Size"] || row.team_size || "").toString().trim(),
+            city: (row["City"] || row.city || "").toString().trim(),
+            sector: (row["Sector"] || row.sector || "").toString().trim(),
+            address: (row["Address"] || row.address || "").toString().trim(),
+            connect: /term/i.test(row["Connect Status"] || row.connect || "") ? "Terminate" : "Live",
+            remark: (row["Remark"] || row.remark || "").toString().trim()
+          };
+          const key = firstNum(rec.mobiles);
+          const existing = key ? DB.brokers.find((b) => firstNum(b.mobiles) === key) : null;
+          if (existing) { rec.id = existing.id; merged++; } else added++;
+          upsert("brokers", rec);
+        });
+        toast(`Imported: ${added} new · ${merged} updated${skipped ? " · " + skipped + " skipped" : ""}`);
+        brokerRowsHtml();
+      } catch (e) { toast("Could not read file. Use the Template format."); }
+    };
+    if (isCsv || typeof XLSX === "undefined") r.readAsText(f); else r.readAsBinaryString(f);
+  };
+  inp.click();
+}
+function bulkDeleteBrokers() {
+  const ids = selectedBulk("brokerRows").map(Number);
+  if (!ids.length) return toast("Tick some rows first");
+  if (!confirm(`Delete ${ids.length} selected broker(s)? This cannot be undone.`)) return;
+  ids.forEach((id) => removeRow("brokers", id));
+  toast(`Deleted ${ids.length}`); brokerRowsHtml();
 }
 function brokerRow(b) {
   const cnt = leadCountForBroker(b.name);
   return `<tr>
+    <td><input type="checkbox" class="bulk" data-id="${b.id}"></td>
     <td class="nowrap"><span class="rowlink" data-profile="broker:${b.id}" style="font-weight:600">${esc(b.name)}</span>${cnt ? ` <span class="pill-active">Active</span>` : ""}</td>
     <td class="nowrap">${esc(b.firm) || "—"}</td>
     <td>${badge(b.grade)}</td><td>${esc(b.team_size) || "—"}</td>
@@ -1248,7 +1321,7 @@ function listCustomers(title, rows) {
 function bindView(k) {
   if (k === "leads") { leadRowsHtml(); ["lq", "lStatus", "lRating"].forEach((id) => document.getElementById(id).addEventListener("input", leadRowsHtml)); const ld = document.getElementById("lDel"); if (ld) ld.onclick = bulkDeleteLeads; }
   if (k === "dash") { updateDashDigi(); }
-  if (k === "brokers") { brokerRowsHtml(); ["bq", "bType", "bGrade"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", brokerRowsHtml); }); }
+  if (k === "brokers") { brokerRowsHtml(); ["bq", "bType", "bGrade"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", brokerRowsHtml); }); const w = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; }; w("bDel", bulkDeleteBrokers); w("bTpl", brokerTemplate); w("bImp", brokerImport); w("bExp", brokerExport); }
   if (k === "customers") { custRowsHtml(); ["cq", "cCat", "cFut", "cRate"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", custRowsHtml); }); }
   if (k === "projects") { populateProjectsWeb(); }
   if (k === "digital") { populateDigital(); }
