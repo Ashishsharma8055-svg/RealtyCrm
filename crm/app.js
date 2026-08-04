@@ -713,6 +713,22 @@ function brokerExport() {
   const csv = [BROKER_COLS].concat(rows).map((r) => r.map((c) => `"${String(c == null ? "" : c).replace(/"/g, '""')}"`).join(",")).join("\n");
   const b = new Blob([csv], { type: "text/csv" }), a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "realtycrm-brokers-" + today() + ".csv"; a.click(); URL.revokeObjectURL(a.href); toast("Brokers exported");
 }
+function rowToBroker(row) {
+  const name = (row["Broker Name"] || row.name || row.Name || "").toString().trim();
+  if (!name) return null;
+  return {
+    name,
+    firm: (row["Firm / Company"] || row.firm || row.Firm || "").toString().trim(),
+    mobiles: (row["Mobile Numbers"] || row.mobiles || row.Mobile || "").toString().trim(),
+    grade: ((row["Grade"] || row.grade || "").toString().trim().toUpperCase().charAt(0)) || "B",
+    team_size: (row["Team Size"] || row.team_size || "").toString().trim(),
+    city: (row["City"] || row.city || "").toString().trim(),
+    sector: (row["Sector"] || row.sector || "").toString().trim(),
+    address: (row["Address"] || row.address || "").toString().trim(),
+    connect: /term/i.test(row["Connect Status"] || row.connect || "") ? "Terminate" : "Live",
+    remark: (row["Remark"] || row.remark || "").toString().trim()
+  };
+}
 function brokerImport() {
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls,.csv";
   inp.onchange = () => {
@@ -723,34 +739,56 @@ function brokerImport() {
         if (!isCsv && typeof XLSX !== "undefined") { const wb = XLSX.read(ev.target.result, { type: "binary" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); }
         else rows = parseCSV(typeof ev.target.result === "string" ? ev.target.result : new TextDecoder().decode(ev.target.result));
         if (!rows.length) return toast("Sheet appears empty");
-        let added = 0, merged = 0, skipped = 0;
+        const news = [], dups = [];
         rows.forEach((row) => {
-          const name = (row["Broker Name"] || row.name || row.Name || "").toString().trim();
-          if (!name) { skipped++; return; }
-          const rec = {
-            name,
-            firm: (row["Firm / Company"] || row.firm || row.Firm || "").toString().trim(),
-            mobiles: (row["Mobile Numbers"] || row.mobiles || row.Mobile || "").toString().trim(),
-            grade: ((row["Grade"] || row.grade || "").toString().trim().toUpperCase().charAt(0)) || "B",
-            team_size: (row["Team Size"] || row.team_size || "").toString().trim(),
-            city: (row["City"] || row.city || "").toString().trim(),
-            sector: (row["Sector"] || row.sector || "").toString().trim(),
-            address: (row["Address"] || row.address || "").toString().trim(),
-            connect: /term/i.test(row["Connect Status"] || row.connect || "") ? "Terminate" : "Live",
-            remark: (row["Remark"] || row.remark || "").toString().trim()
-          };
+          const rec = rowToBroker(row); if (!rec) return;
           const key = firstNum(rec.mobiles);
           const existing = key ? DB.brokers.find((b) => firstNum(b.mobiles) === key) : null;
-          if (existing) { rec.id = existing.id; merged++; } else added++;
-          upsert("brokers", rec);
+          if (existing) dups.push({ old: existing, neu: rec }); else news.push(rec);
         });
-        toast(`Imported: ${added} new · ${merged} updated${skipped ? " · " + skipped + " skipped" : ""}`);
-        brokerRowsHtml();
+        news.forEach((r) => upsert("brokers", r));       // new brokers added straight away
+        if (dups.length) openBrokerDupReview(dups, news.length);
+        else { toast(news.length ? `Imported ${news.length} new broker(s)` : "No new brokers to import"); brokerRowsHtml(); }
       } catch (e) { toast("Could not read file. Use the Template format."); }
     };
     if (isCsv || typeof XLSX === "undefined") r.readAsText(f); else r.readAsBinaryString(f);
   };
   inp.click();
+}
+// Duplicate review: same mobile already exists → show Old vs New and let the user
+// choose to update (override the old) or keep the old (discard the new) — per row.
+function openBrokerDupReview(dups, addedCount) {
+  const flds = [["name", "Name"], ["firm", "Firm"], ["grade", "Grade"], ["team_size", "Team"], ["city", "City"], ["sector", "Sector"], ["connect", "Connect"], ["remark", "Remark"]];
+  const body = dups.map((d, i) => {
+    const rowsH = flds.map(([k, lbl]) => {
+      const diff = (d.old[k] || "") !== (d.neu[k] || "");
+      return `<tr${diff ? ' style="background:#fffbeb"' : ""}><td class="fu-meta" style="white-space:nowrap">${lbl}</td><td>${esc(d.old[k]) || "—"}</td><td>${esc(d.neu[k]) || "—"}</td></tr>`;
+    }).join("");
+    return `<div class="card pad" style="margin-bottom:12px">
+      <div style="font-weight:600;margin-bottom:8px">📱 ${esc(firstNum(d.neu.mobiles) || d.neu.mobiles)} <span class="fu-meta">— matches existing broker</span></div>
+      <div class="table-wrap"><table style="font-size:12px"><thead><tr><th></th><th>Old (in CRM)</th><th>New (from file)</th></tr></thead><tbody>${rowsH}</tbody></table></div>
+      <div style="margin-top:10px;display:flex;gap:16px">
+        <label style="cursor:pointer"><input type="radio" name="dup${i}" value="update" checked> Update (replace old with new)</label>
+        <label style="cursor:pointer"><input type="radio" name="dup${i}" value="keep"> Keep old (discard new)</label>
+      </div>
+    </div>`;
+  }).join("");
+  modal(`Review ${dups.length} duplicate broker(s)`, `
+    <div class="fu-meta" style="margin-bottom:10px">${addedCount} new broker(s) added. The ones below already exist (matched by mobile) — choose what to do with each:</div>
+    <div style="margin-bottom:12px;display:flex;gap:8px"><button class="btn outline sm" id="dupAllUpd">Update all</button><button class="btn outline sm" id="dupAllKeep">Keep all old</button></div>
+    ${body}
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="dupApply">Apply</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  document.getElementById("dupAllUpd").onclick = () => dups.forEach((_, i) => { const r = document.querySelector(`input[name="dup${i}"][value="update"]`); if (r) r.checked = true; });
+  document.getElementById("dupAllKeep").onclick = () => dups.forEach((_, i) => { const r = document.querySelector(`input[name="dup${i}"][value="keep"]`); if (r) r.checked = true; });
+  document.getElementById("dupApply").onclick = () => {
+    let upd = 0;
+    dups.forEach((d, i) => {
+      const v = (document.querySelector(`input[name="dup${i}"]:checked`) || {}).value;
+      if (v === "update") { upsert("brokers", Object.assign({}, d.neu, { id: d.old.id })); upd++; }  // override old, keep same record id
+    });
+    closeModal(); toast(`Import done: ${addedCount} new · ${upd} updated · ${dups.length - upd} kept`); brokerRowsHtml();
+  };
 }
 function bulkDeleteBrokers() {
   const ids = selectedBulk("brokerRows").map(Number);
