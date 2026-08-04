@@ -14,6 +14,8 @@ const STATUSES = ["Active", "Inactive", "Booked"];
 const CATEGORIES = ["Investor", "EndUser"];
 const GRADES = ["A", "B", "C"];
 const CONNECT = ["Live", "Terminate"];
+// Activity you schedule for NEXT time (the follow-up you're booking now).
+const SCHEDULE_TYPES = ["Call", "Outbound Meeting", "Inbound Meeting", "Site Visit", "Casual Follow-up"];
 const PROJ_TYPES = ["Plot", "Floor", "H-rise", "Other"];
 const PROJ_STATUS = ["Live", "Sold Out", "Upcoming"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -208,7 +210,7 @@ function subFor(k) {
   if (k === "testimonials") return "Customer reviews shown on your website";
   if (k === "followups") return `${b.today.length} today · ${b.upcoming.length} upcoming · ${b.missed.length} missed`;
   if (k === "calendar") return "Meetings & follow-up schedule";
-  if (k === "brokers") return `${DB.brokers.length} channel partners empanelled`;
+  if (k === "brokers") return `${uniqueFirms().length} firm${uniqueFirms().length === 1 ? "" : "s"} · ${DB.brokers.length} broker${DB.brokers.length === 1 ? "" : "s"} empanelled`;
   if (k === "customers") return `${DB.customers.length} customer records`;
   if (k === "projects") return "Your project catalogue — shared with the website";
   if (k === "reports") return "Executive analysis — leads, channels & customers";
@@ -639,15 +641,22 @@ function leadCountForBroker(name) {
   if (!n) return 0;
   return DB.leads.filter((l) => (l.source_name || "").trim().toLowerCase() === n).length;
 }
+// Unique firm names (non-empty), and the grade that belongs to a firm.
+function uniqueFirms() { return [...new Set(DB.brokers.map((b) => (b.firm || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
+function firmGrade(firm) { const key = (firm || "").trim().toLowerCase(); const g = DB.brokers.filter((b) => (b.firm || "").trim().toLowerCase() === key).map((b) => b.grade).filter(Boolean).sort(); return g[0] || ""; }
 function brokerSummaryChips(list, clickable) {
   const rows = list || DB.brokers, n90 = addDays(-90);
   const f = (val) => (clickable ? val : undefined);
+  // Count by FIRM: one firm = one entity, no matter how many brokers it has.
+  const firms = {};
+  rows.forEach((b) => { const k = (b.firm || "").trim() || "— No firm —"; (firms[k] = firms[k] || []).push(b); });
+  const arr = Object.values(firms);
   return [
-    { v: rows.length, k: "Total", c: "indigo", f: f("") },
-    { v: rows.filter((b) => b.connect === "Live").length, k: "Live", c: "green", f: f("live") },
-    { v: rows.filter((b) => b.connect === "Terminate").length, k: "Terminated", c: "gray", f: f("terminate") },
-    { v: rows.filter((b) => leadCountForBroker(b.name) > 0).length, k: "Active · with client", c: "teal", f: f("active") },
-    { v: rows.filter((b) => (b.created_at || "").slice(0, 10) >= n90 && b.connect === "Live").length, k: "New · 3 months", c: "amber", f: f("new3") },
+    { v: arr.length, k: "Firms", c: "indigo", f: f("") },
+    { v: arr.filter((g) => g.some((b) => b.connect === "Live")).length, k: "Live", c: "green", f: f("live") },
+    { v: arr.filter((g) => g.length && g.every((b) => b.connect === "Terminate")).length, k: "Terminated", c: "gray", f: f("terminate") },
+    { v: arr.filter((g) => g.some((b) => leadCountForBroker(b.name) > 0)).length, k: "Active · with client", c: "teal", f: f("active") },
+    { v: arr.filter((g) => g.some((b) => (b.created_at || "").slice(0, 10) >= n90 && b.connect === "Live")).length, k: "New · 3 months", c: "amber", f: f("new3") },
   ];
 }
 let brokerGroupMode = "firm";   // "firm" = grouped by firm (default) | "list" = flat table
@@ -718,12 +727,13 @@ function brokerFirmsHtml(rows) {
     const list = groups[firm].slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
     const live = list.filter((x) => x.connect === "Live").length;
     const totalLeads = list.reduce((s, x) => s + leadCountForBroker(x.name), 0);
+    const grade = firmGrade(firm);   // grade belongs to the firm, not the individual broker
     const emp = list.map((b) => {
       const cnt = leadCountForBroker(b.name);
       return `<div class="firm-emp">
         <div class="firm-emp-main">
           <span class="rowlink" data-profile="broker:${b.id}" style="font-weight:600">${esc(b.name)}</span>
-          ${badge(b.grade)}${cnt ? ` <span class="pill-active">Active · ${cnt}</span>` : ""}${b.connect === "Terminate" ? ` ${badge("Terminate")}` : ""}
+          ${cnt ? `<span class="pill-active">Active · ${cnt}</span>` : ""}${b.connect === "Terminate" ? ` ${badge("Terminate")}` : ""}
         </div>
         <div class="firm-emp-side">
           <span class="firm-mob">${b.mobiles ? telLink(b.mobiles) : `<span class="muted">no mobile</span>`}</span>
@@ -736,6 +746,7 @@ function brokerFirmsHtml(rows) {
       <summary class="firm-head">
         <span class="firm-chev" aria-hidden="true">▸</span>
         <span class="firm-name">${esc(firm)}</span>
+        ${grade ? `<span class="firm-grade">Grade ${badge(grade)}</span>` : ""}
         <span class="firm-badge">${list.length} broker${list.length > 1 ? "s" : ""}</span>
         <span class="firm-meta">${live} live${totalLeads ? ` · ${totalLeads} lead${totalLeads > 1 ? "s" : ""}` : ""}</span>
         <span class="firm-add-wrap"><button class="btn outline sm" data-addfirm="${esc(firm)}">+ Add broker</button></span>
@@ -1579,9 +1590,10 @@ function openBrokerForm(existing) {
       <div class="lf-sec">
         <div class="lf-sec-head lf-indigo">${IC.user}<span>Broker Details</span></div>
         <div class="lf-sec-body"><div class="form-grid">
-          ${field("Broker Name", "b_name", b.name)}${field("Firm / Company", "b_firm", b.firm)}
+          ${field("Broker Name", "b_name", b.name)}
+          <div class="field"><label>Firm / Company</label><input id="b_firm" list="firmList" autocomplete="off" placeholder="Type to search or add new…" value="${esc(b.firm || "")}" /><datalist id="firmList">${uniqueFirms().map((fm) => `<option value="${esc(fm)}"></option>`).join("")}</datalist></div>
           ${field("Mobile Numbers", "b_mobiles", b.mobiles, "full")}
-          ${field("Team Size", "b_team", b.team_size, "number")}${pillField("Grade", "b_grade", GRADES, b.grade, true)}
+          ${field("Team Size", "b_team", b.team_size, "number")}${pillField("Grade (firm-level)", "b_grade", GRADES, b.grade || firmGrade(b.firm), true)}
         </div></div>
       </div>
       <div class="lf-sec">
@@ -1601,9 +1613,19 @@ function openBrokerForm(existing) {
     </div>
     <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="saveBroker">Save Broker</button></div>`, true);
   document.querySelector("[data-close2]").onclick = closeModal;
+  // When an existing firm is picked, auto-fill that firm's grade.
+  const firmInp = document.getElementById("b_firm");
+  if (firmInp) firmInp.addEventListener("change", () => {
+    const g = firmGrade(firmInp.value); if (!g) return;
+    const gh = document.getElementById("b_grade"); if (gh) gh.value = g;
+    document.querySelectorAll('[data-pill^="b_grade::"]').forEach((btn) => btn.classList.toggle("on", btn.getAttribute("data-pill") === "b_grade::" + g));
+  });
   document.getElementById("saveBroker").onclick = () => {
     const name = fieldVal("b_name"); if (!name) return toast("Broker name is required");
-    const savedBroker = upsert("brokers", { id: b.id, name, firm: fieldVal("b_firm"), mobiles: fieldVal("b_mobiles"), grade: fieldVal("b_grade"), team_size: fieldVal("b_team"), city: fieldVal("b_city"), sector: fieldVal("b_sector"), address: fieldVal("b_address"), connect: fieldVal("b_connect"), followup_at: fieldVal("b_followup") ? fieldVal("b_followup").replace("T", " ") : "", remark: fieldVal("b_remark") });
+    const firm = fieldVal("b_firm"), grade = fieldVal("b_grade");
+    const savedBroker = upsert("brokers", { id: b.id, name, firm, mobiles: fieldVal("b_mobiles"), grade, team_size: fieldVal("b_team"), city: fieldVal("b_city"), sector: fieldVal("b_sector"), address: fieldVal("b_address"), connect: fieldVal("b_connect"), followup_at: fieldVal("b_followup") ? fieldVal("b_followup").replace("T", " ") : "", remark: fieldVal("b_remark") });
+    // Grade is a firm property: keep every broker of this firm on the same grade.
+    if (firm && grade) { const key = firm.trim().toLowerCase(); DB.brokers.forEach((x) => { if ((x.firm || "").trim().toLowerCase() === key) x.grade = grade; }); save(); }
     gcalMaybeInsert("broker", savedBroker);
     closeModal(); toast("Broker saved"); go(active === "brokers" ? "brokers" : active);
   };
@@ -1693,18 +1715,28 @@ function openActivity(entity, id) {
   modal("Activity Trail — " + label, `
     <div class="card pad" style="background:#f8fafc;margin-bottom:16px;">
       <div class="form-grid">
-        ${field("Type", "a_kind", "Call", "", kinds)}${field("Date & Time", "a_when", nl, "datetime-local")}
+        ${field("Activity Done", "a_kind", "Call", "", kinds)}${field("Date & Time", "a_when", nl, "datetime-local")}
         ${field("Remark", "a_remark", "", "textarea")}
-        ${field("Set Next Follow-up", "a_followup", row.followup_at ? row.followup_at.replace(" ", "T").slice(0, 16) : "", "datetime-local")}
+      </div>
+      <div class="pf-sched">
+        <div class="pf-sched-title">📅 Set Next Follow-up</div>
+        <div class="form-grid">
+          ${field("Schedule Type", "a_nextkind", "Call", "", SCHEDULE_TYPES)}
+          ${field("Date & Time", "a_followup", row.followup_at ? row.followup_at.replace(" ", "T").slice(0, 16) : "", "datetime-local")}
+        </div>
       </div>
       <div style="text-align:right;margin-top:10px;"><button class="btn primary" id="addAct">Add to Trail</button></div>
     </div>
     <ol class="timeline" id="trail"></ol>`);
   renderTrail(entity, id);
+  const aRemarkEl = document.getElementById("a_remark");
+  if (aRemarkEl) aRemarkEl.addEventListener("input", () => aRemarkEl.classList.remove("needfill"));
   document.getElementById("addAct").onclick = () => {
-    const remark = fieldVal("a_remark"); if (!remark) return toast("Add a remark");
-    addActivity({ entity_type: entity, entity_id: id, kind: fieldVal("a_kind"), remark, activity_at: (fieldVal("a_when") || nl).replace("T", " ") });
-    const fu = fieldVal("a_followup"); const hadNew = fu && row.followup_at !== fu.replace("T", " "); row.followup_at = fu ? fu.replace("T", " ") : ""; save();
+    const remark = fieldVal("a_remark");
+    if (!remark) { if (aRemarkEl) { aRemarkEl.classList.add("needfill"); aRemarkEl.focus(); } return toast("Add a remark to log this activity"); }
+    const fu = fieldVal("a_followup");
+    addActivity({ entity_type: entity, entity_id: id, kind: fieldVal("a_kind"), remark, activity_at: (fieldVal("a_when") || nl).replace("T", " "), next_kind: fu ? fieldVal("a_nextkind") : "", next_at: fu ? fu.replace("T", " ") : "" });
+    row.followup_at = fu ? fu.replace("T", " ") : ""; save();
     gcalMaybeInsert(entity, row);
     document.getElementById("a_remark").value = ""; renderTrail(entity, id); toast("Activity added");
   };
@@ -1712,7 +1744,7 @@ function openActivity(entity, id) {
 function renderTrail(entity, id) {
   const items = activitiesFor(entity, id);
   document.getElementById("trail").innerHTML = items.length
-    ? items.map((a) => `<li><div style="font-weight:500">${esc(a.kind)}</div><div class="fu-meta">${fmtDate(a.activity_at || a.created_at)}</div>${a.remark ? `<div style="margin-top:2px;color:#475569">${esc(a.remark)}</div>` : ""}</li>`).join("")
+    ? items.map((a) => `<li><div style="font-weight:500">${esc(a.kind)}</div><div class="fu-meta">${fmtDate(a.activity_at || a.created_at)}</div>${a.remark ? `<div style="margin-top:2px;color:#475569">${esc(a.remark)}</div>` : ""}${(a.next_kind || a.next_at) ? `<div class="pf-jnext" style="margin-top:4px">📅 Next: <b>${esc(a.next_kind || "Follow-up")}</b> · ${fmtDate(a.next_at)}</div>` : ""}</li>`).join("")
     : `<li style="list-style:none;margin-left:-6px"><div class="empty" style="padding:16px 0">No activity yet.</div></li>`;
 }
 
@@ -1742,17 +1774,24 @@ function journeyHtml(entity, id, emptyMsg) {
   if (!acts.length) return `<li class="pf-jempty">${emptyMsg}</li>`;
   return acts.map((a) => {
     const cancelled = /Cancelled/i.test(a.kind || "");
-    return `<li class="pf-jitem${cancelled ? " cancelled" : ""}"><div class="pf-jkind">${esc(a.kind || "Note")}</div><div class="pf-jtime">${fmtDate(a.activity_at || a.created_at)}</div>${a.remark ? `<div class="pf-jremark">${esc(a.remark)}</div>` : ""}</li>`;
+    const next = (a.next_kind || a.next_at) ? `<div class="pf-jnext">📅 Next: <b>${esc(a.next_kind || "Follow-up")}</b> · ${fmtDate(a.next_at)}</div>` : "";
+    return `<li class="pf-jitem${cancelled ? " cancelled" : ""}"><div class="pf-jkind">${esc(a.kind || "Note")}</div><div class="pf-jtime">${fmtDate(a.activity_at || a.created_at)}</div>${a.remark ? `<div class="pf-jremark">${esc(a.remark)}</div>` : ""}${next}</li>`;
   }).join("");
 }
 function logBox(prefix, current) {
   const kinds = prefix === "pl" ? ["Call", "F2F", "SVD", "Negotiation", "VDNB", "Note"] : ["Call", "Meeting", "Site Visit", "Note"];
   return `<div class="pf-log">
     <div class="form-grid">
-      ${field("Type", prefix + "_kind", "Call", "", kinds)}
+      ${field("Activity Done", prefix + "_kind", "Call", "", kinds)}
       ${field("Date & Time", prefix + "_when", nowLocalStr(), "datetime-local")}
       ${field("Remark", prefix + "_remark", "", "textarea")}
-      ${field("Set Next Follow-up", prefix + "_follow", current ? current.replace(" ", "T").slice(0, 16) : "", "datetime-local")}
+    </div>
+    <div class="pf-sched">
+      <div class="pf-sched-title">📅 Set Next Follow-up</div>
+      <div class="form-grid">
+        ${field("Schedule Type", prefix + "_nextkind", "Call", "", SCHEDULE_TYPES)}
+        ${field("Date & Time", prefix + "_follow", current ? current.replace(" ", "T").slice(0, 16) : "", "datetime-local")}
+      </div>
     </div>
     <div style="text-align:right;margin-top:8px"><button class="btn primary sm" id="${prefix}Log">Add to Journey</button></div>
   </div>`;
@@ -1815,10 +1854,14 @@ function openLeadProfile(id) {
   document.getElementById("pfEdit").onclick = () => { closeModal(); openLeadForm(l); };
   const cb = document.getElementById("pfCancel");
   if (cb) cb.onclick = () => { if (!confirm("Cancel this follow-up? It will be logged in the record and removed from the follow-up list.")) return; addActivity({ entity_type: "lead", entity_id: id, kind: "Follow-up Cancelled", remark: "Scheduled " + fmtDate(l.followup_at) + " was cancelled.", activity_at: now() }); l.followup_at = ""; save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Cancelled and logged"); };
+  const plRemarkEl = document.getElementById("pl_remark");
+  if (plRemarkEl) plRemarkEl.addEventListener("input", () => plRemarkEl.classList.remove("needfill"));
   document.getElementById("plLog").onclick = () => {
-    const r = fieldVal("pl_remark"); if (!r) return toast("Add a remark");
-    addActivity({ entity_type: "lead", entity_id: id, kind: fieldVal("pl_kind"), remark: r, activity_at: (fieldVal("pl_when") || nowLocalStr()).replace("T", " ") });
-    const fu = fieldVal("pl_follow"); l.followup_at = fu ? fu.replace("T", " ") : ""; save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Journey updated");
+    const r = fieldVal("pl_remark");
+    if (!r) { if (plRemarkEl) { plRemarkEl.classList.add("needfill"); plRemarkEl.focus(); } return toast("Add a remark to log this activity"); }
+    const fu = fieldVal("pl_follow");
+    addActivity({ entity_type: "lead", entity_id: id, kind: fieldVal("pl_kind"), remark: r, activity_at: (fieldVal("pl_when") || nowLocalStr()).replace("T", " "), next_kind: fu ? fieldVal("pl_nextkind") : "", next_at: fu ? fu.replace("T", " ") : "" });
+    l.followup_at = fu ? fu.replace("T", " ") : ""; save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Journey updated");
   };
 }
 
@@ -1870,10 +1913,14 @@ function openBrokerProfile(id) {
   document.getElementById("pfEditB").onclick = () => { closeModal(); openBrokerForm(b); };
   const cb = document.getElementById("pfCancelB");
   if (cb) cb.onclick = () => { if (!confirm("Cancel this meeting? It will be logged in the record and removed from the follow-up list.")) return; addActivity({ entity_type: "broker", entity_id: id, kind: "Meeting Cancelled", remark: "Scheduled " + fmtDate(b.followup_at) + " was cancelled.", activity_at: now() }); b.followup_at = ""; save(); gcalMaybeInsert("broker", b); go(active); openBrokerProfile(id); toast("Cancelled and logged"); };
+  const pbRemarkEl = document.getElementById("pb_remark");
+  if (pbRemarkEl) pbRemarkEl.addEventListener("input", () => pbRemarkEl.classList.remove("needfill"));
   document.getElementById("pbLog").onclick = () => {
-    const r = fieldVal("pb_remark"); if (!r) return toast("Add a remark");
-    addActivity({ entity_type: "broker", entity_id: id, kind: fieldVal("pb_kind"), remark: r, activity_at: (fieldVal("pb_when") || nowLocalStr()).replace("T", " ") });
-    const fu = fieldVal("pb_follow"); b.followup_at = fu ? fu.replace("T", " ") : ""; save(); gcalMaybeInsert("broker", b); go(active); openBrokerProfile(id); toast("Journey updated");
+    const r = fieldVal("pb_remark");
+    if (!r) { if (pbRemarkEl) { pbRemarkEl.classList.add("needfill"); pbRemarkEl.focus(); } return toast("Add a remark to log this activity"); }
+    const fu = fieldVal("pb_follow");
+    addActivity({ entity_type: "broker", entity_id: id, kind: fieldVal("pb_kind"), remark: r, activity_at: (fieldVal("pb_when") || nowLocalStr()).replace("T", " "), next_kind: fu ? fieldVal("pb_nextkind") : "", next_at: fu ? fu.replace("T", " ") : "" });
+    b.followup_at = fu ? fu.replace("T", " ") : ""; save(); gcalMaybeInsert("broker", b); go(active); openBrokerProfile(id); toast("Journey updated");
   };
 }
 function openProfile(spec) { const [t, id] = spec.split(":"); return t === "lead" ? openLeadProfile(Number(id)) : openBrokerProfile(Number(id)); }

@@ -671,3 +671,14 @@ tbody tr:hover { background: var(--slate-50); }
   .firm-emp-side { width: 100%; justify-content: space-between; }
   .firm-mob { text-align: left; min-width: 0; }
 }
+
+/* ===== Connect pills: Live = green, Terminate = red ===== */
+.pill.on[data-pill$="::Live"] { background:#059669; border-color:#059669; color:#fff; box-shadow:0 4px 12px rgba(5,150,105,.32); }
+.pill.on[data-pill$="::Terminate"] { background:#dc2626; border-color:#dc2626; color:#fff; box-shadow:0 4px 12px rgba(220,38,38,.32); }
+
+/* ===== Journey: required-remark highlight + next-schedule line + firm grade ===== */
+.needfill { border-color:#ef4444 !important; box-shadow:0 0 0 3px rgba(239,68,68,.18) !important; }
+.pf-sched { margin-top:12px; padding-top:12px; border-top:1px dashed var(--slate-200); }
+.pf-sched-title { font-size:12px; font-weight:700; color:var(--slate-600); text-transform:uppercase; letter-spacing:.03em; margin-bottom:8px; }
+.pf-jnext { margin-top:6px; font-size:12px; color:var(--indigo); font-weight:600; background:rgba(79,70,229,.10); display:inline-block; padding:3px 9px; border-radius:6px; }
+.firm-grade { font-size:11px; color:var(--slate-500); display:inline-flex; align-items:center; gap:4px; }
