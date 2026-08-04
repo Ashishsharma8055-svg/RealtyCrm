@@ -650,10 +650,15 @@ function brokerSummaryChips(list, clickable) {
     { v: rows.filter((b) => (b.created_at || "").slice(0, 10) >= n90 && b.connect === "Live").length, k: "New · 3 months", c: "amber", f: f("new3") },
   ];
 }
+let brokerGroupMode = "firm";   // "firm" = grouped by firm (default) | "list" = flat table
 function viewBrokers() {
   return `
   <div id="brokerStats"></div>
   <div class="card filters">
+    <div class="bgrp-seg">
+      <button class="btn sm ${brokerGroupMode === "firm" ? "primary" : "outline"}" id="bGrpFirm">🏢 By Firm</button>
+      <button class="btn sm ${brokerGroupMode === "list" ? "primary" : "outline"}" id="bGrpList">☰ All Brokers</button>
+    </div>
     <input type="text" class="search" id="bq" placeholder="Search name, firm, city…" />
     <select id="bType">
       <option value="">All brokers</option>
@@ -668,9 +673,10 @@ function viewBrokers() {
     <button class="btn outline sm" id="bImp">↥ Import</button>
     <button class="btn outline sm" id="bExp">⌄ Export</button>
   </div>
-  <div class="card"><div class="table-wrap"><table>
+  <div class="card" id="brokerListWrap"><div class="table-wrap"><table>
     <thead><tr><th style="width:34px"><input type="checkbox" class="bulk-all"></th>${["Broker", "Firm", "Grade", "Team", "City / Sector", "Enquiries", "Connect", "Follow-up", ""].map((h) => `<th>${h}</th>`).join("")}</tr></thead>
-    <tbody id="brokerRows"></tbody></table><div id="brokerEmpty"></div></div></div>`;
+    <tbody id="brokerRows"></tbody></table><div id="brokerEmpty"></div></div></div>
+  <div id="brokerFirmWrap"></div>`;
 }
 function brokerRowsHtml() {
   const q = (document.getElementById("bq")?.value || "").toLowerCase();
@@ -688,9 +694,62 @@ function brokerRowsHtml() {
   });
   const stats = document.getElementById("brokerStats");
   if (stats) stats.innerHTML = drillStats(brokerSummaryChips(null, true));
-  document.getElementById("brokerEmpty").innerHTML = rows.length ? "" : `<div class="empty">No brokers match these filters.</div>`;
-  document.getElementById("brokerRows").innerHTML = rows.map(brokerRow).join("");
-  wireBulkAll("brokerRows");
+  const listWrap = document.getElementById("brokerListWrap");
+  const firmWrap = document.getElementById("brokerFirmWrap");
+  if (brokerGroupMode === "firm") {
+    if (listWrap) listWrap.style.display = "none";
+    if (firmWrap) { firmWrap.style.display = ""; firmWrap.innerHTML = brokerFirmsHtml(rows); }
+  } else {
+    if (firmWrap) { firmWrap.style.display = "none"; firmWrap.innerHTML = ""; }
+    if (listWrap) listWrap.style.display = "";
+    const emptyEl = document.getElementById("brokerEmpty"); if (emptyEl) emptyEl.innerHTML = rows.length ? "" : `<div class="empty">No brokers match these filters.</div>`;
+    const rowsEl = document.getElementById("brokerRows"); if (rowsEl) rowsEl.innerHTML = rows.map(brokerRow).join("");
+    wireBulkAll("brokerRows");
+  }
+}
+// Grouped-by-firm view: one card per unique firm, expandable to reveal that firm's
+// brokers (employees) with tap-to-dial mobile. Firms with more brokers sort to the top.
+function brokerFirmsHtml(rows) {
+  if (!rows.length) return `<div class="card"><div class="empty">No brokers match these filters.</div></div>`;
+  const groups = {};
+  rows.forEach((b) => { const key = (b.firm || "").trim() || "— No firm —"; (groups[key] = groups[key] || []).push(b); });
+  const names = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length || a.localeCompare(b));
+  return names.map((firm) => {
+    const list = groups[firm].slice().sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    const live = list.filter((x) => x.connect === "Live").length;
+    const totalLeads = list.reduce((s, x) => s + leadCountForBroker(x.name), 0);
+    const emp = list.map((b) => {
+      const cnt = leadCountForBroker(b.name);
+      return `<div class="firm-emp">
+        <div class="firm-emp-main">
+          <span class="rowlink" data-profile="broker:${b.id}" style="font-weight:600">${esc(b.name)}</span>
+          ${badge(b.grade)}${cnt ? ` <span class="pill-active">Active · ${cnt}</span>` : ""}${b.connect === "Terminate" ? ` ${badge("Terminate")}` : ""}
+        </div>
+        <div class="firm-emp-side">
+          <span class="firm-mob">${b.mobiles ? telLink(b.mobiles) : `<span class="muted">no mobile</span>`}</span>
+          <button class="btn primary sm" data-profile="broker:${b.id}">View</button>
+          <button class="btn outline sm" data-act="editbroker" data-id="${b.id}">Edit</button>
+        </div>
+      </div>`;
+    }).join("");
+    return `<details class="firm-card">
+      <summary class="firm-head">
+        <span class="firm-chev" aria-hidden="true">▸</span>
+        <span class="firm-name">${esc(firm)}</span>
+        <span class="firm-badge">${list.length} broker${list.length > 1 ? "s" : ""}</span>
+        <span class="firm-meta">${live} live${totalLeads ? ` · ${totalLeads} lead${totalLeads > 1 ? "s" : ""}` : ""}</span>
+        <span class="firm-add-wrap"><button class="btn outline sm" data-addfirm="${esc(firm)}">+ Add broker</button></span>
+      </summary>
+      <div class="firm-body">${emp}</div>
+    </details>`;
+  }).join("");
+}
+function setBrokerGroup(mode) {
+  brokerGroupMode = mode;
+  const f = document.getElementById("bGrpFirm"), l = document.getElementById("bGrpList");
+  if (f) f.className = "btn sm " + (mode === "firm" ? "primary" : "outline");
+  if (l) l.className = "btn sm " + (mode === "list" ? "primary" : "outline");
+  brokerRowsHtml();
 }
 /* ---- Brokers: template / import / export / bulk delete (matches the broker database) ---- */
 const BROKER_COLS = ["Broker Name", "Firm / Company", "Mobile Numbers", "Grade", "Team Size", "City", "Sector", "Address", "Connect Status", "Remark"];
@@ -1359,7 +1418,7 @@ function listCustomers(title, rows) {
 function bindView(k) {
   if (k === "leads") { leadRowsHtml(); ["lq", "lStatus", "lRating"].forEach((id) => document.getElementById(id).addEventListener("input", leadRowsHtml)); const ld = document.getElementById("lDel"); if (ld) ld.onclick = bulkDeleteLeads; }
   if (k === "dash") { updateDashDigi(); }
-  if (k === "brokers") { brokerRowsHtml(); ["bq", "bType", "bGrade"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", brokerRowsHtml); }); const w = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; }; w("bDel", bulkDeleteBrokers); w("bTpl", brokerTemplate); w("bImp", brokerImport); w("bExp", brokerExport); }
+  if (k === "brokers") { brokerRowsHtml(); ["bq", "bType", "bGrade"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", brokerRowsHtml); }); const w = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; }; w("bDel", bulkDeleteBrokers); w("bTpl", brokerTemplate); w("bImp", brokerImport); w("bExp", brokerExport); w("bGrpFirm", () => setBrokerGroup("firm")); w("bGrpList", () => setBrokerGroup("list")); }
   if (k === "customers") { custRowsHtml(); ["cq", "cCat", "cFut", "cRate"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", custRowsHtml); }); }
   if (k === "projects") { populateProjectsWeb(); }
   if (k === "digital") { populateDigital(); }
@@ -1832,6 +1891,7 @@ document.addEventListener("click", (e) => {
   const drill = e.target.closest("[data-drill]"); if (drill) return openDrill(drill.getAttribute("data-drill"));
   const bl = e.target.closest("[data-brokerleads]"); if (bl) { const b = brokerById(Number(bl.getAttribute("data-brokerleads"))); if (b) listLeads("Enquiries via " + b.name, DB.leads.filter((l) => (l.source_name || "").trim().toLowerCase() === (b.name || "").trim().toLowerCase())); return; }
   const chip = e.target.closest("[data-chip]"); if (chip) { const t = document.getElementById("bType"); if (t) { t.value = chip.getAttribute("data-chip"); brokerRowsHtml(); } return; }
+  const addfirm = e.target.closest("[data-addfirm]"); if (addfirm) { e.preventDefault(); const fm = addfirm.getAttribute("data-addfirm"); return openBrokerForm({ connect: "Live", firm: fm === "— No firm —" ? "" : fm }); }
   const stage = e.target.closest("[data-stage]"); if (stage) return openDrill("stage:" + stage.getAttribute("data-stage"));
   const grade = e.target.closest("[data-grade]"); if (grade) return openDrill("grade:" + grade.getAttribute("data-grade"));
   const prof = e.target.closest("[data-profile]"); if (prof) return openProfile(prof.getAttribute("data-profile"));

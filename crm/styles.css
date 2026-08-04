@@ -645,3 +645,29 @@ tbody tr:hover { background: var(--slate-50); }
   .drill-stats { flex-wrap: wrap; }
   .tel { text-decoration-thickness: 2px; }   /* bigger tap target on phone */
 }
+
+/* ===== Brokers: By-Firm grouped view ===== */
+.bgrp-seg { display: inline-flex; gap: 6px; margin-right: 4px; }
+.firm-card { background: var(--panel); border: 1px solid var(--slate-200); border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+.firm-card[open] { box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+.firm-head { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; padding: 14px 16px; font-size: 14px; }
+.firm-head::-webkit-details-marker { display: none; }
+.firm-chev { display: inline-block; color: var(--slate-500); transition: transform .15s; font-size: 12px; }
+.firm-card[open] .firm-chev { transform: rotate(90deg); }
+.firm-name { font-weight: 700; font-size: 15px; color: var(--slate-900, inherit); }
+.firm-badge { background: var(--indigo); color: #fff; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; }
+.firm-meta { font-size: 12px; color: var(--slate-500); }
+.firm-add-wrap { margin-left: auto; }
+.firm-body { border-top: 1px solid var(--slate-200); padding: 4px 8px 8px; }
+.firm-emp { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 8px; border-bottom: 1px solid var(--slate-200); }
+.firm-emp:last-child { border-bottom: none; }
+.firm-emp-main { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.firm-emp-side { display: flex; align-items: center; gap: 10px; }
+.firm-mob { font-size: 13px; min-width: 120px; text-align: right; }
+@media (max-width: 640px) {
+  .firm-head { flex-wrap: wrap; gap: 8px 10px; }
+  .firm-add-wrap { margin-left: 0; width: 100%; }
+  .firm-emp { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .firm-emp-side { width: 100%; justify-content: space-between; }
+  .firm-mob { text-align: left; min-width: 0; }
+}
