@@ -40,6 +40,9 @@
           <p id="pageSub" class="sub">Live overview of your pipeline</p>
         </div>
         <div class="topbar-actions">
+          <button id="refreshBtn" class="btn outline" aria-label="Refresh data" title="Refresh — pull the latest data" style="padding:9px 11px">
+            <svg id="refreshIcon" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg>
+          </button>
           <button id="themeToggle" class="btn outline" aria-label="Toggle light/dark mode" title="Toggle light/dark" style="padding:9px 11px">☾</button>
           <button id="primaryBtn" class="btn primary">+ New Enquiry</button>
         </div>
@@ -126,6 +129,6 @@
   <script src="../js/data.js"></script>
   <!-- SheetJS — same library admin.html uses, for Excel Template/Import/Export. -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>

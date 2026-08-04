@@ -257,6 +257,8 @@ function viewDash() {
   const grades = GRADES.map((g) => ["Gr " + g, DB.brokers.filter((b) => b.grade === g).length]);
   const liveBrokers = DB.brokers.filter((b) => b.connect === "Live").length;
   const activeBrokers = DB.brokers.filter((b) => leadCountForBroker(b.name) > 0).length;
+  // Firm-level counts for the Broker tile: one firm = one entity. Live firm = has >=1 Live broker.
+  const { totalFirms, liveFirms, liveFirmBrokers } = liveFirmStats();
   const bk = bucketFollowups();
   const acts = DB.activities.slice().sort((a, b) => b.id - a.id).slice(0, 10);
   const nowM = new Date().getMonth() + 1;
@@ -278,7 +280,13 @@ function viewDash() {
   return `
   <div class="grid cols-4">
     ${stat("Total Enquiries", L.length, "#4f46e5", active_ + " active", "leads:all")}
-    ${stat("Brokers", DB.brokers.length, "#2563eb", liveBrokers + " live", "brokers:all")}
+    <div class="card pad stat tile-click" data-drill="brokers:all">
+      <span class="stat-corner" title="Brokers working in live firms">${liveFirmBrokers} broker${liveFirmBrokers === 1 ? "" : "s"}</span>
+      <div class="stat-label">Broker Firms</div>
+      <div class="stat-value" style="color:#2563eb">${liveFirms}</div>
+      <div class="stat-hint">live · ${totalFirms} firm${totalFirms === 1 ? "" : "s"} total</div>
+      <div class="stat-go">View ›</div>
+    </div>
     ${stat("Active Brokers", activeBrokers, "#0d9488", "Brought an enquiry", "brokers:active")}
     ${stat("Customers", DB.customers.length, "#0f172a", DB.projects.length + " projects", "goto:customers")}
   </div>
@@ -643,6 +651,15 @@ function leadCountForBroker(name) {
 }
 // Unique firm names (non-empty), and the grade that belongs to a firm.
 function uniqueFirms() { return [...new Set(DB.brokers.map((b) => (b.firm || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
+// Firm-level dashboard counts. One firm = one entity (solo brokers with no firm are pooled
+// as a single "— No firm —" group, matching the Brokers page tiles). A firm is "live" if any
+// of its brokers is Live; liveFirmBrokers = headcount across those live firms.
+function liveFirmStats() {
+  const g = {}; DB.brokers.forEach((b) => { const k = (b.firm || "").trim() || "— No firm —"; (g[k] = g[k] || []).push(b); });
+  const arr = Object.values(g);
+  const live = arr.filter((x) => x.some((b) => b.connect === "Live"));
+  return { totalFirms: arr.length, liveFirms: live.length, liveFirmBrokers: live.reduce((n, x) => n + x.length, 0) };
+}
 function firmGrade(firm) { const key = (firm || "").trim().toLowerCase(); const g = DB.brokers.filter((b) => (b.firm || "").trim().toLowerCase() === key).map((b) => b.grade).filter(Boolean).sort(); return g[0] || ""; }
 function brokerSummaryChips(list, clickable) {
   const rows = list || DB.brokers, n90 = addDays(-90);
@@ -885,6 +902,68 @@ function brokerRow(b) {
     </td></tr>`;
 }
 
+/* ---- Customer identity & 360 linking ----
+   Every customer has a stable unique id (nextId). We display it as C-####.
+   A customer's enquiries/units are matched by mobile number (the natural key),
+   so one person's many enquiries, projects and booked units roll up together. */
+function mobKey(m) { return String(m == null ? "" : m).replace(/\D/g, "").slice(-10); }
+function custMobKeys(c) { return [c.mobile1, c.mobile2, c.mobile3].map(mobKey).filter((x) => x.length >= 10); }
+function custUid(c) { return "C-" + String(c && c.id || 0).padStart(4, "0"); }
+function leadsForCustomer(c) {
+  if (!c) return [];
+  const keys = new Set(custMobKeys(c));
+  let ls = keys.size ? DB.leads.filter((l) => keys.has(mobKey(l.customer_mobile))) : [];
+  if (!ls.length && c.name) { const nk = c.name.trim().toLowerCase(); if (nk) ls = DB.leads.filter((l) => (l.customer_name || "").trim().toLowerCase() === nk); }
+  return ls.slice().sort((a, b) => b.id - a.id);
+}
+function customerForLead(l) { const k = mobKey(l && l.customer_mobile); if (!k) return null; return DB.customers.find((c) => custMobKeys(c).includes(k)) || null; }
+function siblingLeads(l) { const k = mobKey(l && l.customer_mobile); if (!k) return [l]; return DB.leads.filter((x) => mobKey(x.customer_mobile) === k).sort((a, b) => b.id - a.id); }
+
+function openCustomer360(id) {
+  const c = DB.customers.find((x) => x.id === id); if (!c) return;
+  const ls = leadsForCustomer(c);
+  const activeN = ls.filter((l) => l.status === "Active").length;
+  const booked = ls.filter((l) => l.status === "Booked");
+  const projs = uniqList(ls.flatMap((l) => l.projects_shared || []));
+  const initials = esc((c.name || "?").slice(0, 1).toUpperCase());
+  const enqRows = ls.length ? ls.map((l) => `
+    <div class="c360-enq rowlink" data-profile="lead:${l.id}">
+      <div class="c360-enq-main"><span class="mono">${esc(l.lead_number || ("#" + l.id))}</span> <span class="c360-req">${esc(l.requirement) || "—"}</span>${l.budget ? ` <span class="chip-budget">${esc(l.budget)}</span>` : ""}${(l.projects_shared || []).length ? ` <span class="fu-meta">${esc((l.projects_shared || []).join(", "))}</span>` : ""}</div>
+      <div class="c360-enq-side">${badge(l.stage)} ${badge(l.status)}</div>
+    </div>`).join("") : `<div class="muted" style="font-size:13px">No enquiries linked to this customer yet.</div>`;
+  const bookedRows = booked.length ? booked.map((l) => {
+    const items = (l.projects_shared || []).map((n) => `<div class="pf-proj"><span class="pf-proj-name">${esc(n)}</span><span class="pf-proj-cost">${esc((l.costing || {})[n] || "—")}</span></div>`).join("") || `<div class="muted" style="font-size:12px">Project not specified</div>`;
+    return `<div class="c360-booked"><div class="c360-booked-hd"><span class="mono">${esc(l.lead_number || ("#" + l.id))}</span> ${badge("Booked")}</div>${items}</div>`;
+  }).join("") : `<div class="muted" style="font-size:13px">No booked units yet.</div>`;
+  const body = `<div class="pf c360">
+    <div class="pf-header lead">
+      <div class="pf-avatar">${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : initials}</div>
+      <div class="pf-htext">
+        <div class="pf-name">${esc(c.name || "Customer")}</div>
+        <div class="pf-sub"><span class="c360-uid">${custUid(c)}</span>${c.mobile1 ? " · " + esc(c.mobile1) : ""}${c.city ? " · " + esc(c.city) : ""}</div>
+        <div class="pf-pills">${c.category ? `<span class="pf-pill b-default">${esc(c.category)}</span>` : ""}${c.rating ? `<span class="pf-pill b-default">${stars(c.rating)}</span>` : ""}</div>
+      </div>
+      <div class="pf-actions"><button class="btn light sm" id="c360Edit">Edit</button></div>
+    </div>
+    <div class="pf-body">
+      <div class="pf-hero">
+        ${heroCard(IC.link, "Enquiries", ls.length, "indigo")}
+        ${heroCard(IC.flag, "Active", activeN, "amber")}
+        ${heroCard(IC.money, "Booked", booked.length, "green")}
+        ${heroCard(IC.home, "Projects", projs.length, "teal")}
+      </div>
+      <div class="pf-section-title">All Enquiries <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— every enquiry from this customer</span></div>
+      <div class="c360-enqs">${enqRows}</div>
+      <div class="pf-section-title">Projects Shared</div>
+      <div class="pf-projs">${projs.length ? projs.map((n) => `<div class="pf-proj"><span class="pf-proj-name">${esc(n)}</span></div>`).join("") : `<div class="muted" style="font-size:13px">None yet.</div>`}</div>
+      <div class="pf-section-title">Booked Units</div>
+      ${bookedRows}
+    </div>
+  </div>`;
+  modal("Customer 360", body, true);
+  const eb = document.getElementById("c360Edit"); if (eb) eb.onclick = () => { closeModal(); openCustomerForm(c); };
+}
+
 function viewCustomers() {
   return `<div class="card filters">
     <input type="text" class="search" id="cq" placeholder="Search name, mobile, city, profession…" />
@@ -910,13 +989,13 @@ function custRowsHtml() {
     <div class="card pad">
       <div style="display:flex;gap:12px;">
         <div class="avatar">${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : esc((c.name || "?").slice(0, 1).toUpperCase())}</div>
-        <div style="min-width:0;flex:1"><div style="font-weight:600">${esc(c.name)}</div><div class="fu-meta">${esc(c.mobile1)}${c.city ? " · " + esc(c.city) : ""}</div>
-          <div style="margin-top:5px;display:flex;gap:8px;align-items:center;">${c.category ? badge(c.category) : ""}${c.rating ? stars(c.rating) : ""}</div></div>
+        <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="rowlink" data-profile="customer:${c.id}" style="font-weight:600">${esc(c.name)}</span><span class="c360-uid">${custUid(c)}</span></div><div class="fu-meta">${esc(c.mobile1)}${c.city ? " · " + esc(c.city) : ""}</div>
+          <div style="margin-top:5px;display:flex;gap:8px;align-items:center;">${c.category ? badge(c.category) : ""}${c.rating ? stars(c.rating) : ""}${(() => { const n = leadsForCustomer(c).length; return n ? `<span class="c360-enqpill">${n} enquir${n === 1 ? "y" : "ies"}</span>` : ""; })()}</div></div>
       </div>
       ${c.profession ? `<div style="margin-top:10px;" class="fu-meta">Profession: ${esc(c.profession)}</div>` : ""}
       <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;">
         <span class="badge ${Number(c.contact_future ?? 1) ? "b-Live" : "b-Inactive"}">${Number(c.contact_future ?? 1) ? "Contact in future" : "Do not contact"}</span>
-        <div><button class="btn outline sm" data-act="editcust" data-id="${c.id}">Edit</button><button class="btn danger sm" data-act="delcust" data-id="${c.id}">Del</button></div>
+        <div><button class="btn primary sm" data-act="cust360" data-id="${c.id}">360 ›</button><button class="btn outline sm" data-act="editcust" data-id="${c.id}">Edit</button><button class="btn danger sm" data-act="delcust" data-id="${c.id}">Del</button></div>
       </div></div>`).join("");
 }
 
@@ -940,7 +1019,33 @@ function projRowsHtml() {
 let reportOpts = { from: "", to: "", gran: "month" };
 let reportView = "overview";
 let reportFilters = {};
-let matchCriteria = { requirement: "", budget: "", project: "", etype: "" };
+let matchCriteria = { requirement: "", budgetMin: "", budgetMax: "", project: "", etype: "", unitId: "", unitText: "" };
+// Inventory units for the Match Finder "Project / Unit no" finder (loaded from the shared website store).
+let _mfUnits = [], _mfUnitsLoaded = false;
+async function loadMfUnits() {
+  if (_mfUnitsLoaded) return;
+  const S = WS(); if (!S) return;
+  try { _mfUnits = await S.inventory(); _mfUnitsLoaded = true; if (reportView === "match") renderReportBody(); } catch (e) {}
+}
+// True when a lead's budget band falls within the [minBand, maxBand] window (either end optional).
+function budgetBandInRange(band, minBand, maxBand) {
+  if (!minBand && !maxBand) return true;
+  const bi = BUDGETS.indexOf(band); if (bi < 0) return false;
+  const a = minBand ? BUDGETS.indexOf(minBand) : 0;
+  const b = maxBand ? BUDGETS.indexOf(maxBand) : BUDGETS.length - 1;
+  return bi >= Math.min(a, b) && bi <= Math.max(a, b);
+}
+// Map a unit's costing (in Cr) to the matching budget band.
+function crToBudgetBand(cr) {
+  const n = Number(cr); if (!n) return "";
+  if (n < 2) return "Below 2 Cr";
+  if (n < 2.5) return "2-2.5 Cr";
+  if (n < 3) return "2.5-3 Cr";
+  if (n < 3.5) return "3-3.5 Cr";
+  if (n < 4) return "3.5-4 Cr";
+  if (n < 5) return "4-5 Cr";
+  return "5 Cr+";
+}
 const RF_LABELS = { stage: "Stage", requirement: "Requirement", budget: "Budget", source_type: "Source type", source: "Source / CP", city: "City", category: "Category", profession: "Profession", grade: "Grade", rating: "Rating", status: "Status", etype: "Enquiry type", project: "Project" };
 const REPORT_TABS = [["overview", "Overview"], ["brokers", "Channels / Brokers"], ["enquiries", "Enquiries"], ["sources", "Sources"], ["projects", "Projects"], ["customers", "Customers"], ["match", "Match Finder"]];
 const GRANS = [["day", "Daily"], ["week", "Weekly"], ["month", "Monthly"], ["quarter", "Quarterly"], ["half", "Half-yearly"], ["year", "Annually"]];
@@ -1247,6 +1352,11 @@ function repCustomers() {
     `<div class="rep-grid2" style="margin-top:16px"><div><div class="rep-subhead">Top locations <span class="rep-hint">· click</span></div>${hbars(cityD, "#4f46e5", "city")}</div><div><div class="rep-subhead">Top professions <span class="rep-hint">· click</span></div>${hbars(profD, "#0ea5e9", "profession")}</div></div>` +
     `<div class="rep-grid2" style="margin-top:16px"><div><div class="rep-subhead">Customer quality (rating)</div>${hbars(ratingD, "#f59e0b")}</div><div><div class="rep-subhead">This month — birthdays</div>${repTable(["Name", "DOB", "Mobile"], bdays, "No birthdays this month.")}</div></div>` +
     `<div class="rep-grid2" style="margin-top:16px"><div><div class="rep-subhead">This month — anniversaries</div>${repTable(["Name", "Anniversary", "Mobile"], annis, "No anniversaries this month.")}</div><div></div></div>` +
+    (() => {
+      const repeat = C.map((c) => ({ c, n: leadsForCustomer(c).length })).filter((x) => x.n > 1).sort((a, b) => b.n - a.n);
+      const rows = repeat.map((x) => [`<span class="c360-uid">${custUid(x.c)}</span>`, `<span class="rowlink" data-profile="customer:${x.c.id}">${esc(x.c.name)}</span><div class="fu-meta">${esc(x.c.mobile1) || "—"}</div>`, `<span class="chip-budget">${x.n}</span>`, esc(uniqList(leadsForCustomer(x.c).flatMap((l) => l.projects_shared || [])).join(", ")) || "—", leadsForCustomer(x.c).filter((l) => l.status === "Booked").length || "—"]);
+      return `<div class="rep-subhead" style="margin-top:18px">Repeat customers — multiple enquiries <span class="rep-hint">· click a name for the 360 view</span></div>${repTable(["Customer ID", "Customer", "Enquiries", "Projects", "Booked"], rows, "No customer has more than one enquiry yet.")}`;
+    })() +
     repInsight(`Base skews ${cnt("category", "Investor") >= cnt("category", "EndUser") ? "toward investors" : "toward end-users"}. <b>${contactable}</b> flagged contact-in-future${bdays.length ? `, and <b>${bdays.length}</b> have a birthday this month — a natural touchpoint` : ""}.`);
   return repSection("C", "Customer Analysis", "amber", inner);
 }
@@ -1255,29 +1365,56 @@ function repCustomers() {
 function repMatch() {
   const m = matchCriteria;
   const projNames = DB.projects.map((p) => p.name);
+  const unit = m.unitId ? _mfUnits.find((u) => String(u.id) === String(m.unitId)) : null;
   const sel = (id, k, opts, cur, ph) => `<label class="mf-field"><span>${ph}</span><select id="${id}" data-k="${k}"><option value="">Any</option>${opts.map((o) => `<option ${cur === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></label>`;
+  const budSel = (id, k, cur, ph) => `<label class="mf-field"><span>${ph}</span><select id="${id}" data-k="${k}"><option value="">Any</option>${BUDGETS.map((o) => `<option ${cur === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></label>`;
+  const unitOptions = _mfUnits.map((u) => `<option value="${esc(u.project + " · " + u.unitNo)}"></option>`).join("");
   const controls = `<div class="mf-controls">
     ${sel("rmReq", "requirement", REQUIREMENTS, m.requirement, "Requirement")}
-    ${sel("rmBud", "budget", BUDGETS, m.budget, "Budget")}
+    ${budSel("rmBudMin", "budgetMin", m.budgetMin, "Budget from")}
+    ${budSel("rmBudMax", "budgetMax", m.budgetMax, "Budget to")}
     ${sel("rmProj", "project", projNames, m.project, "Project")}
     ${sel("rmType", "etype", ENQUIRY_TYPES, m.etype, "Enquiry type")}
+    <label class="mf-field mf-unit"><span>Project / Unit no</span><input id="rmUnit" list="rmUnitList" placeholder="${_mfUnits.length ? "Type project or unit no…" : "Loading units…"}" value="${esc(m.unitText || "")}"/><datalist id="rmUnitList">${unitOptions}</datalist></label>
     <button class="btn ghost sm" id="rmClear" type="button">Reset</button>
   </div>`;
-  const matches = DB.leads.filter((l) =>
-    (!m.requirement || l.requirement === m.requirement) &&
-    (!m.budget || l.budget === m.budget) &&
-    (!m.project || (l.projects_shared || []).includes(m.project)) &&
-    (!m.etype || l.enquiry_type === m.etype));
+  // Budget range → BUDGETS index window. Either handle may be blank (open-ended).
+  const rangeActive = !!(m.budgetMin || m.budgetMax);
+  let lo = 0, hi = BUDGETS.length - 1;
+  if (rangeActive) {
+    const a = m.budgetMin ? BUDGETS.indexOf(m.budgetMin) : 0;
+    const b = m.budgetMax ? BUDGETS.indexOf(m.budgetMax) : BUDGETS.length - 1;
+    lo = Math.min(a, b); hi = Math.max(a, b);
+  }
+  const matches = DB.leads.filter((l) => {
+    if (m.requirement && l.requirement !== m.requirement) return false;
+    if (!budgetBandInRange(l.budget, m.budgetMin, m.budgetMax)) return false;
+    if (m.project && !(l.projects_shared || []).includes(m.project)) return false;
+    if (m.etype && l.enquiry_type !== m.etype) return false;
+    return true;
+  });
   const custs = uniqList(matches.map((l) => (l.customer_name || "") + "|" + (l.customer_mobile || ""))).filter((x) => x.replace("|", ""));
   const rows = matches.slice().sort((a, b) => b.id - a.id).map((l) => [`<span class="rowlink" data-profile="lead:${l.id}">${esc(l.customer_name) || l.lead_number}</span><div class="fu-meta">${telLink(l.customer_mobile)}</div>`, esc(l.requirement) || "—", `<span class="chip-budget">${esc(l.budget) || "—"}</span>`, esc(l.enquiry_type) || "—", tagchips(l.projects_shared || [], "indigo"), esc(l.stage) || "—", badge(l.rating), badge(l.status), cpCell(l), `<button class="btn drill-open sm" data-profile="lead:${l.id}">Open ›</button>`]);
   const table = repTable(["Customer", "Requirement", "Budget", "Type", "Projects shared", "Stage", "Rating", "Status", "Source/CP", ""], rows, "No enquiries match these criteria yet.");
   const summary = `<div class="rep-hero rep-hero-sm">${repCard(matches.length, "Matching Enquiries", "", "indigo")}${repCard(custs.length, "Interested Customers", "", "teal")}${repCard(matches.filter((l) => l.status === "Active").length, "Still Active", "", "green")}${repCard(matches.filter((l) => l.status === "Booked").length, "Already Booked", "", "gray")}</div>`;
-  const inner = `<p class="mf-help">Pick any combination of requirement, budget, project and enquiry type — for example when a unit becomes available — to instantly find the CP+CL / CL enquiries and customers that match.</p>` + controls + summary + `<div class="rep-subhead" style="margin-top:16px">Matching enquiries &amp; interested customers</div>` + table;
+  const rangeLabel = rangeActive ? ` · budget ${esc(BUDGETS[lo])} → ${esc(BUDGETS[hi])}` : "";
+  const unitCard = unit ? `<div class="mf-unitcard">🏠 <b>${esc(unit.project)}</b> · Unit <b>${esc(unit.unitNo)}</b>${unit.size ? " · " + esc(unit.size) : ""}${unit.desc ? " · " + esc(unit.desc) : ""} · ${unitStatusTag(unit.status)} · ${crLabel(unit.costingCr)} <span class="fu-meta">matches budget band <b>${esc(crToBudgetBand(unit.costingCr)) || "—"}</b>${rangeLabel}</span></div>` : "";
+  const inner = `<p class="mf-help">Pick any combination of requirement, a budget <b>range</b> (from / to bands), project and enquiry type — or find directly by <b>Project / Unit no</b> when a specific unit becomes available — to instantly surface the CP+CL / CL enquiries and customers that match.</p>` + controls + unitCard + summary + `<div class="rep-subhead" style="margin-top:16px">Matching enquiries &amp; interested customers</div>` + table;
   return repSection("M", "Match Finder", "green", inner);
 }
 function bindMatch() {
-  ["rmReq", "rmBud", "rmProj", "rmType"].forEach((id) => { const el = document.getElementById(id); if (el) el.onchange = () => { matchCriteria[el.getAttribute("data-k")] = el.value; renderReportBody(); }; });
-  const c = document.getElementById("rmClear"); if (c) c.onclick = () => { matchCriteria = { requirement: "", budget: "", project: "", etype: "" }; renderReportBody(); };
+  loadMfUnits();
+  ["rmReq", "rmBudMin", "rmBudMax", "rmProj", "rmType"].forEach((id) => { const el = document.getElementById(id); if (el) el.onchange = () => { matchCriteria[el.getAttribute("data-k")] = el.value; renderReportBody(); }; });
+  const u = document.getElementById("rmUnit");
+  if (u) u.onchange = () => {
+    const v = u.value.trim();
+    matchCriteria.unitText = v;
+    const found = _mfUnits.find((x) => (x.project + " · " + x.unitNo).toLowerCase() === v.toLowerCase());
+    if (found) { matchCriteria.unitId = String(found.id); matchCriteria.project = found.project; const band = crToBudgetBand(found.costingCr); if (band) { matchCriteria.budgetMin = band; matchCriteria.budgetMax = band; } }
+    else { matchCriteria.unitId = ""; }
+    renderReportBody();
+  };
+  const c = document.getElementById("rmClear"); if (c) c.onclick = () => { matchCriteria = { requirement: "", budgetMin: "", budgetMax: "", project: "", etype: "", unitId: "", unitText: "" }; renderReportBody(); };
 }
 
 /* ---- shell ---- */
@@ -1808,8 +1945,8 @@ function openLeadProfile(id) {
       <div class="pf-avatar">${initials}</div>
       <div class="pf-htext">
         <div class="pf-name">${esc(l.customer_name || "Unnamed Lead")}</div>
-        <div class="pf-sub">${esc(l.lead_number)}${l.customer_mobile ? " · " + esc(l.customer_mobile) : ""}</div>
-        <div class="pf-pills">${l.rating ? pill(l.rating, "b-" + l.rating) : ""}${l.status ? pill(l.status, "b-" + l.status) : ""}${l.stage ? pill(l.stage, "b-default") : ""}${l.customer_category ? pill(l.customer_category, "b-default") : ""}</div>
+        <div class="pf-sub">${esc(l.lead_number)}${l.customer_mobile ? " · " + esc(l.customer_mobile) : ""}${(() => { const c = customerForLead(l); const sib = siblingLeads(l).length; return (sib > 1) ? ` · <span class="c360-uid">${c ? custUid(c) : ""}</span>` : ""; })()}</div>
+        <div class="pf-pills">${l.rating ? pill(l.rating, "b-" + l.rating) : ""}${l.status ? pill(l.status, "b-" + l.status) : ""}${l.stage ? pill(l.stage, "b-default") : ""}${l.customer_category ? pill(l.customer_category, "b-default") : ""}${(() => { const c = customerForLead(l); const sib = siblingLeads(l).length; return (c && sib > 1) ? `<button type="button" class="pf-pill c360-link" data-profile="customer:${c.id}">👥 ${sib} enquiries — View 360</button>` : ""; })()}</div>
       </div>
       <div class="pf-actions">
         <button class="btn light sm" id="pfEdit">Edit</button>
@@ -1923,7 +2060,7 @@ function openBrokerProfile(id) {
     b.followup_at = fu ? fu.replace("T", " ") : ""; save(); gcalMaybeInsert("broker", b); go(active); openBrokerProfile(id); toast("Journey updated");
   };
 }
-function openProfile(spec) { const [t, id] = spec.split(":"); return t === "lead" ? openLeadProfile(Number(id)) : openBrokerProfile(Number(id)); }
+function openProfile(spec) { const [t, id] = spec.split(":"); return t === "lead" ? openLeadProfile(Number(id)) : t === "customer" ? openCustomer360(Number(id)) : openBrokerProfile(Number(id)); }
 
 /* ---------- Global click handling ---------- */
 document.addEventListener("click", (e) => {
@@ -1958,6 +2095,7 @@ document.addEventListener("click", (e) => {
     if (act === "dellead") return confirmDel("leads", id);
     if (act === "editbroker") { closeModal(); return openBrokerForm(brokerById(id)); }
     if (act === "delbroker") return confirmDel("brokers", id);
+    if (act === "cust360") return openCustomer360(id);
     if (act === "editcust") { closeModal(); return openCustomerForm(DB.customers.find((x) => x.id === id)); }
     if (act === "delcust") return confirmDel("customers", id);
     if (act === "editproj") { closeModal(); return openProjectForm(DB.projects.find((x) => x.id === id)); }
@@ -2142,8 +2280,39 @@ function bootApp() {
   const g = document.getElementById("authGate"); if (g) { g.hidden = true; g.innerHTML = ""; }
   (async () => { try { await migrateWebCatalogToCloud(); } catch (e) {} try { await syncWebProjects(); } catch (e) {} })();
   updateStatusLights();
+  wireRefreshBtn();
   renderNav();
   go("dash");
+}
+// Global Refresh — pull the freshest cloud state, website enquiries and inventory,
+// then re-render whatever view is open. Works in local mode too (just re-renders).
+let _refreshing = false;
+function wireRefreshBtn() {
+  const btn = document.getElementById("refreshBtn");
+  if (btn && !btn._wired) { btn._wired = 1; btn.onclick = refreshAll; }
+}
+async function refreshAll() {
+  if (_refreshing) return;
+  _refreshing = true;
+  const btn = document.getElementById("refreshBtn");
+  if (btn) { btn.classList.add("spinning"); btn.disabled = true; }
+  try {
+    if (CLOUD && typeof CLOUD.loadState === "function") {
+      const state = await CLOUD.loadState();
+      const nonEmpty = (o) => !!(o && ((o.leads && o.leads.length) || (o.brokers && o.brokers.length) || (o.customers && o.customers.length) || (o.projects && o.projects.length) || (o.activities && o.activities.length)));
+      if (nonEmpty(state)) DB = Object.assign(emptyDB(), state);
+      try { await importWebEnquiries(); } catch (e) {}
+    }
+    _inv = []; _proj = []; _mfUnits = []; _mfUnitsLoaded = false;   // force website inventory / projects / match-units to reload
+    updateStatusLights();
+    go(active);
+    toast("Refreshed ✓");
+  } catch (e) {
+    toast("⚠️ Refresh failed — check your connection");
+  } finally {
+    _refreshing = false;
+    if (btn) { btn.classList.remove("spinning"); btn.disabled = false; }
+  }
 }
 // Sidebar status lights: cloud (green when signed-in cloud + online) and Google Calendar.
 function updateStatusLights() {

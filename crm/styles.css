@@ -682,3 +682,32 @@ tbody tr:hover { background: var(--slate-50); }
 .pf-sched-title { font-size:12px; font-weight:700; color:var(--slate-600); text-transform:uppercase; letter-spacing:.03em; margin-bottom:8px; }
 .pf-jnext { margin-top:6px; font-size:12px; color:var(--indigo); font-weight:600; background:rgba(79,70,229,.10); display:inline-block; padding:3px 9px; border-radius:6px; }
 .firm-grade { font-size:11px; color:var(--slate-500); display:inline-flex; align-items:center; gap:4px; }
+
+/* Global refresh button spin */
+#refreshBtn svg { transition:transform .2s; }
+#refreshBtn:hover:not(:disabled) svg { transform:rotate(-30deg); }
+#refreshBtn.spinning svg { animation:rcrmspin .8s linear infinite; }
+#refreshBtn:disabled { opacity:.6; cursor:default; }
+@keyframes rcrmspin { to { transform:rotate(360deg); } }
+
+/* Dashboard stat corner badge (firm broker count) */
+.stat { position:relative; }
+.stat-corner { position:absolute; top:14px; right:16px; font-size:11px; font-weight:700; color:var(--slate-500); background:var(--slate-100); border-radius:999px; padding:3px 9px; letter-spacing:.01em; }
+
+/* Customer 360 */
+.c360-uid { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; font-weight:700; color:var(--indigo); background:rgba(79,70,229,.10); padding:2px 8px; border-radius:6px; letter-spacing:.02em; }
+.c360-enqpill { font-size:11px; font-weight:600; color:#0d9488; background:rgba(13,148,136,.10); padding:2px 9px; border-radius:999px; }
+.c360-link { cursor:pointer; border:none; background:rgba(79,70,229,.10); color:var(--indigo); font-weight:600; }
+.c360-link:hover { background:rgba(79,70,229,.18); }
+.c360-enqs { display:flex; flex-direction:column; gap:8px; }
+.c360-enq { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--slate-200); border-radius:10px; cursor:pointer; transition:background .15s,border-color .15s; }
+.c360-enq:hover { background:var(--slate-50); border-color:var(--indigo); }
+.c360-enq-main { display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0; }
+.c360-req { font-weight:600; }
+.c360-booked { border:1px solid var(--slate-200); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+.c360-booked-hd { display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:13px; }
+
+/* Match Finder — unit finder + range */
+.mf-unit input { padding:8px 10px; border:1px solid var(--slate-200); border-radius:8px; font-size:13px; font-family:inherit; min-width:210px; background:var(--panel); }
+.mf-unitcard { margin:12px 0 4px; padding:10px 14px; border:1px solid var(--indigo); border-left-width:4px; border-radius:10px; background:rgba(79,70,229,.06); font-size:13px; }
+.mf-unitcard .fu-meta { display:inline; }
