@@ -140,6 +140,18 @@ const FirebaseAdapter = (()=>{
   async function all(name){ const {db,fs}=await ensure(); const snap=await fs.getDocs(fs.collection(db,name)); return snap.docs.map(d=>({id:d.id,...d.data()})); }
   async function put(name,id,data){ const {db,fs}=await ensure(); const ref=id?fs.doc(db,name,id):fs.doc(fs.collection(db,name)); const clean=JSON.parse(JSON.stringify(data)); await fs.setDoc(ref,clean,{merge:true}); return {id:ref.id,...data}; }
   async function del(name,id){ const {db,fs}=await ensure(); await fs.deleteDoc(fs.doc(db,name,id)); }
+  // Catalog "init" flags. The catalog (inventory/testimonials) falls back to the built-in
+  // SEED set while the cloud collection is empty, so the public site is never blank. The
+  // downside: deleting a seed-backed item just re-appears from the fallback. Fix: the first
+  // time the user mutates the catalog we MATERIALISE the seeds into the cloud and set an
+  // "init" flag; after that the fallback is disabled, so deletes (even down to empty) stick.
+  async function catMeta(){ try{ const {db,fs}=await ensure(); const s=await fs.getDoc(fs.doc(db,"settings","catalog")); return s.exists()?s.data():{}; }catch(e){ return {}; } }
+  async function materialize(name,seed,flag){
+    const m=await catMeta(); if(m[flag]) return;
+    const cur=await all(name);
+    if(!cur.length){ for(const it of seed){ const d={...it}; const id=d.id; delete d.id; await put(name,id,d); } }
+    try{ await put("settings","catalog",{[flag]:true}); }catch(e){}
+  }
   return {
     ensure, _fb:()=>fb,
     // SAFETY: if the cloud catalog is empty (never migrated / offline), fall back to
@@ -149,10 +161,10 @@ const FirebaseAdapter = (()=>{
     async project(id){ const {db,fs}=await ensure(); const s=await fs.getDoc(fs.doc(db,"projects",id)); if(s.exists()) return {id:s.id,...s.data()}; const seed=SEED_PROJECTS.find(p=>p.id===id); return seed?clone(seed):null; },
     async saveProject(p){ const id=p.id; const d={...p}; delete d.id; return put("projects",id,d); },
     async deleteProject(id){ return del("projects",id); },
-    async inventory(){ const l=await all("inventory"); return l.length?l:clone(SEED_INVENTORY); },
-    async inventoryFor(name){ const l=await all("inventory"); return l.filter(u=>norm(u.project)===norm(name)); },
-    async saveUnit(u){ const id=u.id||(norm(u.project)+"|"+norm(u.unitNo)); const d={...u}; delete d.id; return put("inventory",id,d); },
-    async deleteUnit(id){ return del("inventory",id); },
+    async inventory(){ const l=await all("inventory"); if(l.length) return l; const m=await catMeta(); return m.inventoryInit?[]:clone(SEED_INVENTORY); },
+    async inventoryFor(name){ const l=await this.inventory(); return l.filter(u=>norm(u.project)===norm(name)); },
+    async saveUnit(u){ await materialize("inventory",SEED_INVENTORY,"inventoryInit"); const id=u.id||(norm(u.project)+"|"+norm(u.unitNo)); const d={...u}; delete d.id; return put("inventory",id,d); },
+    async deleteUnit(id){ await materialize("inventory",SEED_INVENTORY,"inventoryInit"); return del("inventory",id); },
     async enquiries(){ const l=await all("enquiries"); return l.sort((a,b)=>(b.ts||0)-(a.ts||0)); },
     async addEnquiry(e){ e.ts=e.ts||Date.now(); e.status=e.status||"Open"; return put("enquiries",null,e); },
     async updateEnquiry(id,patch){ return put("enquiries",id,patch); },
@@ -160,10 +172,10 @@ const FirebaseAdapter = (()=>{
     async partners(){ return all("partners"); },
     async savePartner(p){ const id=p.id; const d={...p}; delete d.id; return put("partners",id,d); },
     async deletePartner(id){ return del("partners",id); },
-    async testimonials(af){ const l=await all("testimonials"); const list=l.length?l:clone(SEED_TESTIMONIALS); return af?list:list.filter(x=>x.approved); },
-    async addTestimonial(t){ t.approved=false; t.ts=Date.now(); return put("testimonials",null,t); },
-    async setTestimonialApproved(id,v){ return put("testimonials",id,{approved:v}); },
-    async deleteTestimonial(id){ return del("testimonials",id); },
+    async testimonials(af){ const l=await all("testimonials"); let list; if(l.length){ list=l; } else { const m=await catMeta(); list=m.testimonialsInit?[]:clone(SEED_TESTIMONIALS); } return af?list:list.filter(x=>x.approved); },
+    async addTestimonial(t){ await materialize("testimonials",SEED_TESTIMONIALS,"testimonialsInit"); t.approved=false; t.ts=Date.now(); return put("testimonials",null,t); },
+    async setTestimonialApproved(id,v){ await materialize("testimonials",SEED_TESTIMONIALS,"testimonialsInit"); return put("testimonials",id,{approved:v}); },
+    async deleteTestimonial(id){ await materialize("testimonials",SEED_TESTIMONIALS,"testimonialsInit"); return del("testimonials",id); },
     async bulkUpsertProjects(rows){ const cur=await all("projects"); const r=mergeProjects(cur,rows); for(const p of r.list){ const id=p.id; const d={...p}; delete d.id; await put("projects",id,d); } return r.report; },
     async bulkUpsertInventory(rows){ const cur=await all("inventory"); const r=mergeInventory(cur,rows); for(const u of r.list){ const id=u.id; const d={...u}; delete d.id; await put("inventory",id,d); } return r.report; },
     async customers(){ return all("customers"); },

@@ -142,7 +142,7 @@ function openFollowups() {
   const res = [];
   DB.leads.forEach((l) => {
     if (l.followup_at && l.status === "Active")
-      res.push({ kind: "lead", id: l.id, name: l.customer_name || l.lead_number, at: l.followup_at, label: (l.enquiry_type || "Client") + " Follow-up", sub: [l.requirement, l.stage].filter(Boolean).join(" · "), lead_number: l.lead_number });
+      res.push({ kind: "lead", id: l.id, name: l.customer_name || l.lead_number, at: l.followup_at, label: (l.enquiry_type || "Client") + " Follow-up", sub: [l.requirement, l.stage].filter(Boolean).join(" · "), lead_number: l.lead_number, ftype: l.followup_kind || "" });
   });
   DB.brokers.forEach((b) => {
     if (b.followup_at && b.connect === "Live")
@@ -369,7 +369,7 @@ function fuItemFull(f) {
       <div class="fu-full-name tile-click" data-openrec="${f.kind}:${f.id}">${esc(f.name)}</div>
       <div class="fu-full-when">${fmtDate(f.at)}</div>
     </div>
-    <div class="fu-full-label"><span class="fu-s-dot ${f.kind}"></span>${esc(f.label)}${f.sub ? ` · <span class="muted">${esc(f.sub)}</span>` : ""}</div>
+    <div class="fu-full-label"><span class="fu-s-dot ${f.kind}"></span>${f.ftype ? `<span class="fu-type-chip">${esc(f.ftype)}</span> ` : ""}${esc(f.label)}${f.sub ? ` · <span class="muted">${esc(f.sub)}</span>` : ""}</div>
     <div class="fu-full-actions">
       <button class="btn ghost sm" data-fuupdate="${f.kind}:${f.id}">Log / Reschedule</button>
       <button class="btn danger sm" data-fucancel="${f.kind}:${f.id}">Cancel</button>
@@ -558,7 +558,7 @@ function openDaySchedule(ds) {
       <div class="day-time">${timeOf(f.at) || "—"}</div>
       <div class="day-main">
         <div class="fu-full-name tile-click" data-openrec="${f.kind}:${f.id}">${esc(f.name)}</div>
-        <div class="fu-full-label"><span class="fu-s-dot ${f.kind}"></span>${esc(f.label)}${f.sub ? ` · <span class="muted">${esc(f.sub)}</span>` : ""}</div>
+        <div class="fu-full-label"><span class="fu-s-dot ${f.kind}"></span>${f.ftype ? `<span class="fu-type-chip">${esc(f.ftype)}</span> ` : ""}${esc(f.label)}${f.sub ? ` · <span class="muted">${esc(f.sub)}</span>` : ""}</div>
       </div>
       <div class="day-actions">
         <a class="gcal-link" href="${gcalUrl((f.kind === "broker" ? "Broker meeting: " : "Follow-up: ") + f.name, f.at, f.label + (f.sub ? " · " + f.sub : ""))}" target="_blank" rel="noopener">＋ Google</a>
@@ -754,6 +754,7 @@ function brokerFirmsHtml(rows) {
         </div>
         <div class="firm-emp-side">
           <span class="firm-mob">${b.mobiles ? telLink(b.mobiles) : `<span class="muted">no mobile</span>`}</span>
+          <button class="btn ghost sm" data-cp360="${esc(b.name)}" title="Full working report for this CP">📊 360</button>
           <button class="btn primary sm" data-profile="broker:${b.id}">View</button>
           <button class="btn outline sm" data-act="editbroker" data-id="${b.id}">Edit</button>
         </div>
@@ -766,7 +767,7 @@ function brokerFirmsHtml(rows) {
         ${grade ? `<span class="firm-grade">Grade ${badge(grade)}</span>` : ""}
         <span class="firm-badge">${list.length} broker${list.length > 1 ? "s" : ""}</span>
         <span class="firm-meta">${live} live${totalLeads ? ` · ${totalLeads} lead${totalLeads > 1 ? "s" : ""}` : ""}</span>
-        <span class="firm-add-wrap"><button class="btn outline sm" data-addfirm="${esc(firm)}">+ Add broker</button></span>
+        <span class="firm-add-wrap">${firm !== "— No firm —" ? `<button class="btn ghost sm" data-firm360="${esc(firm)}" title="Full working report for this firm">📊 360 Report</button>` : ""}<button class="btn outline sm" data-addfirm="${esc(firm)}">+ Add broker</button></span>
       </summary>
       <div class="firm-body">${emp}</div>
     </details>`;
@@ -932,12 +933,12 @@ function openCustomer360(id) {
       <div class="c360-enq-side">${badge(l.stage)} ${badge(l.status)}</div>
     </div>`).join("") : `<div class="muted" style="font-size:13px">No enquiries linked to this customer yet.</div>`;
   const bookedRows = booked.length ? booked.map((l) => {
-    const items = (l.projects_shared || []).map((n) => `<div class="pf-proj"><span class="pf-proj-name">${esc(n)}</span><span class="pf-proj-cost">${esc((l.costing || {})[n] || "—")}</span></div>`).join("") || `<div class="muted" style="font-size:12px">Project not specified</div>`;
+    const items = (l.projects_shared || []).map((n) => `<div class="pf-proj"><span class="pf-proj-name">${esc(n)}${(l.units || {})[n] ? ` <span class="pf-unit">Unit ${esc((l.units || {})[n])}</span>` : ""}</span><span class="pf-proj-cost">${esc((l.costing || {})[n] || "—")}</span></div>`).join("") || `<div class="muted" style="font-size:12px">Project not specified</div>`;
     return `<div class="c360-booked"><div class="c360-booked-hd"><span class="mono">${esc(l.lead_number || ("#" + l.id))}</span> ${badge("Booked")}</div>${items}</div>`;
   }).join("") : `<div class="muted" style="font-size:13px">No booked units yet.</div>`;
   const body = `<div class="pf c360">
     <div class="pf-header lead">
-      <div class="pf-avatar">${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : initials}</div>
+      <div class="pf-avatar"${c.image_url ? ` data-lightimg="${esc(c.image_url)}" style="cursor:zoom-in"` : ""}>${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : initials}</div>
       <div class="pf-htext">
         <div class="pf-name">${esc(c.name || "Customer")}</div>
         <div class="pf-sub"><span class="c360-uid">${custUid(c)}</span>${c.mobile1 ? " · " + esc(c.mobile1) : ""}${c.city ? " · " + esc(c.city) : ""}</div>
@@ -988,7 +989,7 @@ function custRowsHtml() {
   document.getElementById("custGrid").innerHTML = rows.map((c) => `
     <div class="card pad">
       <div style="display:flex;gap:12px;">
-        <div class="avatar">${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : esc((c.name || "?").slice(0, 1).toUpperCase())}</div>
+        <div class="avatar"${c.image_url ? ` data-lightimg="${esc(c.image_url)}" style="cursor:zoom-in"` : ""}>${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : esc((c.name || "?").slice(0, 1).toUpperCase())}</div>
         <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span class="rowlink" data-profile="customer:${c.id}" style="font-weight:600">${esc(c.name)}</span><span class="c360-uid">${custUid(c)}</span></div><div class="fu-meta">${esc(c.mobile1)}${c.city ? " · " + esc(c.city) : ""}</div>
           <div style="margin-top:5px;display:flex;gap:8px;align-items:center;">${c.category ? badge(c.category) : ""}${c.rating ? stars(c.rating) : ""}${(() => { const n = leadsForCustomer(c).length; return n ? `<span class="c360-enqpill">${n} enquir${n === 1 ? "y" : "ies"}</span>` : ""; })()}</div></div>
       </div>
@@ -1034,6 +1035,20 @@ function budgetBandInRange(band, minBand, maxBand) {
   const a = minBand ? BUDGETS.indexOf(minBand) : 0;
   const b = maxBand ? BUDGETS.indexOf(maxBand) : BUDGETS.length - 1;
   return bi >= Math.min(a, b) && bi <= Math.max(a, b);
+}
+// Fill each project row's unit-no datalist in the enquiry form from live inventory.
+async function loadLeadFormUnits() {
+  const dls = document.querySelectorAll("datalist[data-uproj]");
+  if (!dls.length) return;
+  const S = WS(); let units = _mfUnits;
+  if ((!units || !units.length) && S) { try { units = await S.inventory(); _mfUnits = units; _mfUnitsLoaded = true; } catch (e) { units = []; } }
+  units = units || [];
+  dls.forEach((dl) => {
+    const np = (dl.getAttribute("data-uproj") || "").toLowerCase();
+    const opts = units.filter((u) => { const up = (u.project || "").toLowerCase(); return up && (up === np || up.includes(np) || np.includes(up)); })
+      .map((u) => `<option value="${esc(u.unitNo)}">${esc([u.size, u.status, u.costingCr ? u.costingCr + " Cr" : ""].filter(Boolean).join(" · "))}</option>`).join("");
+    dl.innerHTML = opts;
+  });
 }
 // Map a unit's costing (in Cr) to the matching budget band.
 function crToBudgetBand(cr) {
@@ -1593,9 +1608,69 @@ function field(label, id, value, type = "text", opts) {
 function pillField(label, id, opts, cur, full) {
   return `<div class="field${full ? " full" : ""}"><label>${label}</label><input type="hidden" id="${id}" value="${esc(cur || "")}"/><div class="pillset">${opts.map((o) => `<button type="button" class="pill${String(cur) === String(o) ? " on" : ""}" data-pill="${id}::${esc(o)}">${esc(o)}</button>`).join("")}</div></div>`;
 }
+// Like pillField, but colours specific options (e.g. Booked=green, Inactive=red, Active=amber).
+function pillFieldColored(label, id, opts, cur, colorMap, full) {
+  return `<div class="field${full ? " full" : ""}"><label>${label}</label><input type="hidden" id="${id}" value="${esc(cur || "")}"/><div class="pillset">${opts.map((o) => `<button type="button" class="pill pill-c ${colorMap[o] || ""}${String(cur) === String(o) ? " on" : ""}" data-pill="${id}::${esc(o)}">${esc(o)}</button>`).join("")}</div></div>`;
+}
+const STATUS_PILL_COLORS = { Booked: "pc-green", Inactive: "pc-red", Active: "pc-amber" };
 function starField(label, id, cur) {
   const n = Number(cur) || 0;
   return `<div class="field"><label>${label}</label><input type="hidden" id="${id}" value="${n || ""}"/><div class="starset">${[1, 2, 3, 4, 5].map((i) => `<button type="button" class="starbtn${i <= n ? " on" : ""}" data-star="${id}::${i}">★</button>`).join("")}<button type="button" class="star-clear" data-star="${id}::0">clear</button></div></div>`;
+}
+// Photo field: upload → auto-compress → preview thumb (click to enlarge). Value (a data URL
+// or a remote URL) is kept in a hidden input so existing save handlers read it unchanged.
+function imageField(label, id, url) {
+  const has = !!url;
+  return `<div class="field full img-field"><label>${label}</label>
+    <div class="img-row">
+      <div class="img-thumb${has ? "" : " empty"}" data-lightbox="${id}">${has ? `<img src="${esc(url)}" alt="">` : `<span>No photo</span>`}</div>
+      <div class="img-actions">
+        <input type="hidden" id="${id}" value="${esc(url || "")}"/>
+        <label class="btn outline sm img-pick">📷 Upload photo<input type="file" accept="image/*" data-imgfor="${id}" hidden></label>
+        <button type="button" class="btn ghost sm" data-imgclear="${id}">Remove</button>
+        <div class="img-hint muted">Auto-compressed to save space. Click the photo to view it larger.</div>
+      </div>
+    </div></div>`;
+}
+// Downscale + JPEG-compress a chosen image to a small data URL (targets ~120KB so the
+// cloud document stays well under Firestore's 1MB limit even with many photos).
+function compressImage(file, cb) {
+  const MAXDIM = 512, BUDGET = 120 * 1024;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width || 1, h = img.height || 1;
+      const scale = Math.min(1, MAXDIM / Math.max(w, h));
+      w = Math.max(1, Math.round(w * scale)); h = Math.max(1, Math.round(h * scale));
+      let out;
+      try {
+        const cvs = document.createElement("canvas"); cvs.width = w; cvs.height = h;
+        cvs.getContext("2d").drawImage(img, 0, 0, w, h);
+        let q = 0.8; out = cvs.toDataURL("image/jpeg", q);
+        while (out.length > BUDGET * 1.37 && q > 0.4) { q -= 0.1; out = cvs.toDataURL("image/jpeg", q); }
+      } catch (e) { out = reader.result; }
+      cb(out);
+    };
+    img.onerror = () => cb(reader.result);
+    img.src = reader.result;
+  };
+  reader.onerror = () => cb("");
+  reader.readAsDataURL(file);
+}
+function setImageValue(id, url) {
+  const hid = document.getElementById(id); if (hid) hid.value = url || "";
+  const thumb = document.querySelector(`[data-lightbox="${id}"]`);
+  if (thumb) { thumb.classList.toggle("empty", !url); thumb.innerHTML = url ? `<img alt="">` : `<span>No photo</span>`; if (url) thumb.querySelector("img").src = url; }
+}
+function openLightbox(src) {
+  if (!src) return;
+  const div = document.createElement("div");
+  div.className = "lightbox-overlay";
+  div.innerHTML = `<button class="lightbox-close" aria-label="Close">&times;</button><img alt="">`;
+  div.querySelector("img").src = src;
+  div.addEventListener("click", () => div.remove());
+  document.body.appendChild(div);
 }
 
 /* ---------- Lead form ---------- */
@@ -1603,8 +1678,17 @@ function openLeadForm(existing) {
   const l = existing || { lead_date: today(), source_type: "CP", stage: "Call", rating: "Warm", status: "Active" };
   const sel = {};
   (l.projects_shared || []).forEach((n) => (sel[n] = (l.costing || {})[n] || ""));
+  const units0 = l.units || {};
   const projRows = DB.projects.length
-    ? DB.projects.map((p) => `<div class="proj-row"><label><input type="checkbox" data-proj="${esc(p.name)}" ${p.name in sel ? "checked" : ""}/> <span>${esc(p.name)} <span class="muted">${esc(p.type || "")}</span></span></label><input type="text" data-cost="${esc(p.name)}" placeholder="Amount e.g. 3.7 Cr" value="${esc(sel[p.name] || "")}" style="${p.name in sel ? "" : "display:none"}"/></div>`).join("")
+    ? DB.projects.map((p, i) => {
+        const on = p.name in sel;
+        return `<div class="proj-row"><label><input type="checkbox" data-proj="${esc(p.name)}" ${on ? "checked" : ""}/> <span>${esc(p.name)} <span class="muted">${esc(p.type || "")}</span></span></label>
+          <div class="proj-inputs" data-projinputs="${esc(p.name)}" style="${on ? "" : "display:none"}">
+            <input type="text" class="proj-unit" data-unit="${esc(p.name)}" list="ulist_${i}" placeholder="Unit no(s) — pick or type, e.g. A-101, B-202" value="${esc(units0[p.name] || "")}"/>
+            <input type="text" class="proj-cost" data-cost="${esc(p.name)}" placeholder="Costing e.g. 3.7 Cr" value="${esc(sel[p.name] || "")}"/>
+            <datalist id="ulist_${i}" data-uproj="${esc(p.name)}"></datalist>
+          </div></div>`;
+      }).join("")
     : `<div class="muted" style="font-size:13px">Add projects in the Projects module to select them here.</div>`;
   modal(existing && existing.id ? "Edit Enquiry" : "New Enquiry", `
     <div class="lf">
@@ -1643,14 +1727,16 @@ function openLeadForm(existing) {
         <div class="lf-sec-body"><div class="form-grid">
           ${pillField("Lead Stage", "f_stage", STAGES, l.stage, true)}
           ${pillField("Lead Rating", "f_rating", RATINGS, l.rating, true)}
-          ${pillField("Lead Status", "f_status", STATUSES, l.status, true)}
+          ${pillFieldColored("Lead Status", "f_status", STATUSES, l.status, STATUS_PILL_COLORS, true)}
           ${field("Next Follow-up", "f_followup", l.followup_at ? l.followup_at.replace(" ", "T").slice(0, 16) : "", "datetime-local")}
+          ${field("Follow-up Type", "f_followup_kind", l.followup_kind || "", "", SCHEDULE_TYPES)}
           ${field("Remark", "f_remark", l.remark, "textarea")}
         </div></div>
       </div>
     </div>
     <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="saveLead">Save Enquiry</button></div>`, true);
-  document.querySelectorAll("[data-proj]").forEach((cb) => cb.addEventListener("change", (e) => { const name = e.target.getAttribute("data-proj"); const inp = document.querySelector(`[data-cost="${CSS.escape(name)}"]`); if (inp) inp.style.display = e.target.checked ? "" : "none"; }));
+  document.querySelectorAll("[data-proj]").forEach((cb) => cb.addEventListener("change", (e) => { const name = e.target.getAttribute("data-proj"); const box = document.querySelector(`[data-projinputs="${CSS.escape(name)}"]`); if (box) box.style.display = e.target.checked ? "" : "none"; }));
+  loadLeadFormUnits();
   const cpIn = document.getElementById("f_source_name");
   if (cpIn) cpIn.addEventListener("change", () => {
     const b = DB.brokers.find((x) => (x.name || "").trim().toLowerCase() === cpIn.value.trim().toLowerCase());
@@ -1690,8 +1776,8 @@ function openLeadForm(existing) {
   toggleCust();
   document.querySelector("[data-close2]").onclick = closeModal;
   document.getElementById("saveLead").onclick = () => {
-    const projects_shared = [], costing = {};
-    document.querySelectorAll("[data-proj]:checked").forEach((cb) => { const name = cb.getAttribute("data-proj"); projects_shared.push(name); const c = document.querySelector(`[data-cost="${CSS.escape(name)}"]`); if (c && c.value.trim()) costing[name] = c.value.trim(); });
+    const projects_shared = [], costing = {}, units = {};
+    document.querySelectorAll("[data-proj]:checked").forEach((cb) => { const name = cb.getAttribute("data-proj"); projects_shared.push(name); const c = document.querySelector(`[data-cost="${CSS.escape(name)}"]`); if (c && c.value.trim()) costing[name] = c.value.trim(); const u = document.querySelector(`[data-unit="${CSS.escape(name)}"]`); if (u && u.value.trim()) units[name] = u.value.trim(); });
     const et = fieldVal("f_enquiry_type"), custOn = et !== "CP Details Only";
     const savedLead = upsert("leads", {
       id: l.id, lead_number: l.lead_number || "LD-" + Date.now().toString(36).toUpperCase(), web_src: l.web_src, web_synced_ts: l.web_synced_ts,
@@ -1699,8 +1785,8 @@ function openLeadForm(existing) {
       source_type: fieldVal("f_source_type"), source_name: fieldVal("f_source_name"), source_mobile: fieldVal("f_source_mobile"), source_firm: fieldVal("f_source_firm"),
       customer_name: custOn ? fieldVal("f_customer_name") : "", customer_mobile: custOn ? fieldVal("f_customer_mobile") : "", customer_email: custOn ? fieldVal("f_customer_email") : "",
       customer_city: custOn ? fieldVal("f_customer_city") : "", customer_category: custOn ? fieldVal("f_customer_category") : "", customer_profession: custOn ? fieldVal("f_customer_profession") : "",
-      projects_shared, costing, stage: fieldVal("f_stage"), rating: fieldVal("f_rating"), status: fieldVal("f_status"),
-      followup_at: fieldVal("f_followup") ? fieldVal("f_followup").replace("T", " ") : "", remark: fieldVal("f_remark"),
+      projects_shared, costing, units, stage: fieldVal("f_stage"), rating: fieldVal("f_rating"), status: fieldVal("f_status"),
+      followup_at: fieldVal("f_followup") ? fieldVal("f_followup").replace("T", " ") : "", followup_kind: fieldVal("f_followup_kind"), remark: fieldVal("f_remark"),
     });
     const extras = [];
     const st = fieldVal("f_source_type"), sn = fieldVal("f_source_name");
@@ -1731,6 +1817,7 @@ function openBrokerForm(existing) {
           <div class="field"><label>Firm / Company</label><input id="b_firm" list="firmList" autocomplete="off" placeholder="Type to search or add new…" value="${esc(b.firm || "")}" /><datalist id="firmList">${uniqueFirms().map((fm) => `<option value="${esc(fm)}"></option>`).join("")}</datalist></div>
           ${field("Mobile Numbers", "b_mobiles", b.mobiles, "full")}
           ${field("Team Size", "b_team", b.team_size, "number")}${pillField("Grade (firm-level)", "b_grade", GRADES, b.grade || firmGrade(b.firm), true)}
+          ${imageField("Broker Photo", "b_image", b.image_url)}
         </div></div>
       </div>
       <div class="lf-sec">
@@ -1760,7 +1847,7 @@ function openBrokerForm(existing) {
   document.getElementById("saveBroker").onclick = () => {
     const name = fieldVal("b_name"); if (!name) return toast("Broker name is required");
     const firm = fieldVal("b_firm"), grade = fieldVal("b_grade");
-    const savedBroker = upsert("brokers", { id: b.id, name, firm, mobiles: fieldVal("b_mobiles"), grade, team_size: fieldVal("b_team"), city: fieldVal("b_city"), sector: fieldVal("b_sector"), address: fieldVal("b_address"), connect: fieldVal("b_connect"), followup_at: fieldVal("b_followup") ? fieldVal("b_followup").replace("T", " ") : "", remark: fieldVal("b_remark") });
+    const savedBroker = upsert("brokers", { id: b.id, name, firm, mobiles: fieldVal("b_mobiles"), grade, team_size: fieldVal("b_team"), city: fieldVal("b_city"), sector: fieldVal("b_sector"), address: fieldVal("b_address"), connect: fieldVal("b_connect"), followup_at: fieldVal("b_followup") ? fieldVal("b_followup").replace("T", " ") : "", remark: fieldVal("b_remark"), image_url: fieldVal("b_image") });
     // Grade is a firm property: keep every broker of this firm on the same grade.
     if (firm && grade) { const key = firm.trim().toLowerCase(); DB.brokers.forEach((x) => { if ((x.firm || "").trim().toLowerCase() === key) x.grade = grade; }); save(); }
     gcalMaybeInsert("broker", savedBroker);
@@ -1799,7 +1886,8 @@ function openCustomerForm(existing) {
       <div class="lf-sec">
         <div class="lf-sec-head lf-green">${IC.target}<span>Preferences</span></div>
         <div class="lf-sec-body"><div class="form-grid">
-          ${pillField("Contact in Future", "c_future", ["Yes", "No"], String(c.contact_future ?? 1) === "1" ? "Yes" : "No", true)}${field("Photo URL", "c_image", c.image_url, "full")}
+          ${pillField("Contact in Future", "c_future", ["Yes", "No"], String(c.contact_future ?? 1) === "1" ? "Yes" : "No", true)}
+          ${imageField("Customer Photo", "c_image", c.image_url)}
           ${field("Remark", "c_remark", c.remark, "textarea")}
         </div></div>
       </div>
@@ -1939,7 +2027,8 @@ function openLeadProfile(id) {
   const projects = l.projects_shared || [], costing = l.costing || {};
   const initials = esc((l.customer_name || l.lead_number || "?").slice(0, 1).toUpperCase());
   const pill = (t, cls) => `<span class="pf-pill ${cls}">${esc(t)}</span>`;
-  const projChips = projects.length ? projects.map((n) => `<div class="pf-proj"><span class="pf-proj-name">${esc(n)}</span><span class="pf-proj-cost">${esc(costing[n] || "—")}</span></div>`).join("") : `<div class="muted" style="font-size:13px">No projects shared yet.</div>`;
+  const units = l.units || {};
+  const projChips = projects.length ? projects.map((n) => `<div class="pf-proj"><span class="pf-proj-name">${esc(n)}${units[n] ? ` <span class="pf-unit">Unit ${esc(units[n])}</span>` : ""}</span><span class="pf-proj-cost">${esc(costing[n] || "—")}</span></div>`).join("") : `<div class="muted" style="font-size:13px">No projects shared yet.</div>`;
   const body = `<div class="pf">
     <div class="pf-header lead">
       <div class="pf-avatar">${initials}</div>
@@ -1958,7 +2047,7 @@ function openLeadProfile(id) {
         ${heroCard(IC.money, "Budget", esc(l.budget) || "—", "indigo")}
         ${heroCard(IC.home, "Requirement", esc(l.requirement) || "—", "teal")}
         ${heroCard(IC.flag, "Stage", esc(l.stage) || "—", "amber")}
-        ${heroCard(IC.clock, "Next Follow-up", l.followup_at ? fmtDate(l.followup_at) : "Not set", l.followup_at ? "rose" : "green")}
+        ${heroCard(IC.clock, "Next Follow-up", l.followup_at ? fmtDate(l.followup_at) + (l.followup_kind ? ` · ${esc(l.followup_kind)}` : "") : "Not set", l.followup_at ? "rose" : "green")}
       </div>
       <div class="pf-two">
         <div class="pf-info-card accent-indigo">
@@ -2008,13 +2097,14 @@ function openBrokerProfile(id) {
   const pill = (t, cls) => `<span class="pf-pill ${cls}">${esc(t)}</span>`;
   const body = `<div class="pf">
     <div class="pf-header broker">
-      <div class="pf-avatar">${initials}</div>
+      <div class="pf-avatar"${b.image_url ? ` data-lightimg="${esc(b.image_url)}" style="cursor:zoom-in"` : ""}>${b.image_url ? `<img src="${esc(b.image_url)}" alt="">` : initials}</div>
       <div class="pf-htext">
         <div class="pf-name">${esc(b.name)}</div>
         <div class="pf-sub">${esc(b.firm || "")}${b.mobiles ? " · " + esc(b.mobiles) : ""}</div>
         <div class="pf-pills">${b.grade ? pill("Grade " + b.grade, "b-" + b.grade) : ""}${b.connect ? pill(b.connect, "b-" + b.connect) : ""}${b.team_size ? pill(b.team_size + " team", "b-default") : ""}</div>
       </div>
       <div class="pf-actions">
+        <button class="btn light sm" data-cp360="${esc(b.name)}">📊 360 Report</button>
         <button class="btn light sm" id="pfEditB">Edit</button>
         ${b.followup_at ? `<button class="btn lightdanger sm" id="pfCancelB">Cancel meeting</button>` : ""}
       </div>
@@ -2060,6 +2150,114 @@ function openBrokerProfile(id) {
     b.followup_at = fu ? fu.replace("T", " ") : ""; save(); gcalMaybeInsert("broker", b); go(active); openBrokerProfile(id); toast("Journey updated");
   };
 }
+/* ---- Firm / CP 360 working report ----
+   Shows, for a firm or an individual CP, every enquiry / project / customer they brought,
+   filterable by date range. Enquiries are grouped (firm→by CP, CP→by credited firm) in
+   expandable sections. Enquiries credited to a CP who has since MOVED to a different company
+   are highlighted so old work under a former employer is easy to recognise. */
+let f360 = { firm: "", cp: "", from: "", to: "" };
+function creditedFirm(l) { return (l.source_firm || "").trim() || firmOf((l.source_name || "").trim()) || ""; }
+function currentFirmOfCP(name) { const b = DB.brokers.find((x) => (x.name || "").trim().toLowerCase() === (name || "").trim().toLowerCase()); return b ? (b.firm || "").trim() : ""; }
+function firmEmployees(firm) { const k = (firm || "").trim().toLowerCase(); return DB.brokers.filter((b) => (b.firm || "").trim().toLowerCase() === k); }
+// A credit is "moved" when the CP was credited under one firm but now works at another.
+function leadMoved(l, viewingFirm) {
+  const cur = currentFirmOfCP(l.source_name);
+  const credited = (l.source_firm || "").trim() || viewingFirm || firmOf((l.source_name || "").trim());
+  return !!(cur && credited && cur.toLowerCase() !== credited.toLowerCase());
+}
+function f360Leads() {
+  const f = f360;
+  return DB.leads.filter((l) => {
+    if (f.firm && creditedFirm(l).toLowerCase() !== f.firm.toLowerCase()) return false;
+    if (f.cp && (l.source_name || "").trim().toLowerCase() !== f.cp.toLowerCase()) return false;
+    const dt = l.lead_date || (l.created_at || "").slice(0, 10);
+    if (f.from && dt < f.from) return false;
+    if (f.to && dt > f.to) return false;
+    return true;
+  }).sort((a, b) => b.id - a.id);
+}
+function openFirm360(firm) { f360 = { firm: firm || "", cp: "", from: "", to: "" }; modal("📊 Firm 360 · " + firm, firm360Shell(), true); wireF360(); }
+function openCP360(cp) { f360 = { firm: "", cp: cp || "", from: "", to: "" }; modal("📊 CP 360 · " + cp, firm360Shell(), true); wireF360(); }
+function firm360Shell() {
+  const f = f360;
+  const curFirm = f.firm || currentFirmOfCP(f.cp);
+  const grade = curFirm ? firmGrade(curFirm) : "";
+  const sub = f.firm
+    ? `${firmEmployees(f.firm).length} CP${firmEmployees(f.firm).length === 1 ? "" : "s"} empanelled${grade ? " · Grade " + grade : ""}`
+    : `Current firm: ${currentFirmOfCP(f.cp) || "—"}${grade ? " · Grade " + grade : ""}`;
+  return `<div class="f360">
+    <div class="f360-sub">${esc(sub)}</div>
+    <div class="f360-controls">
+      <span class="f360-ctl-label">Period</span>
+      <label>From <input type="date" id="f360From" value="${f.from}"></label>
+      <label>To <input type="date" id="f360To" value="${f.to}"></label>
+      <button class="btn ghost sm" id="f360Reset">All time (till today)</button>
+      <button class="btn outline sm" id="f360Print">🖨 Print</button>
+    </div>
+    <div id="f360inner">${firm360Inner()}</div>
+  </div>`;
+}
+function firm360Inner() {
+  const f = f360, isFirm = !!f.firm;
+  const ls = f360Leads();
+  const custs = uniqList(ls.map((l) => (l.customer_name || "") + "|" + mobKey(l.customer_mobile)).filter((x) => x.replace("|", "")));
+  const projs = uniqList(ls.flatMap((l) => l.projects_shared || []));
+  const booked = ls.filter((l) => l.status === "Booked");
+  const moved = ls.filter((l) => isFirm ? leadMoved(l, f.firm) : leadMoved(l, creditedFirm(l)));
+  const hero = `<div class="pf-hero">
+    ${heroCard(IC.link, "Enquiries", ls.length, "indigo")}
+    ${heroCard(IC.building, "Projects", projs.length, "teal")}
+    ${heroCard(IC.user, "Customers", custs.length, "amber")}
+    ${heroCard(IC.money, "Booked", booked.length, "green")}
+  </div>`;
+  const rangeNote = `<div class="f360-range">${(f.from || f.to) ? `Showing ${f.from || "start"} → ${f.to || "today"}` : "All time · till today"} · <b>${ls.length}</b> enquiries</div>`;
+  const movedNote = moved.length ? `<div class="f360-moved-note">⚠️ <b>${moved.length}</b> enquir${moved.length === 1 ? "y is" : "ies are"} credited to a CP who has since moved to a different company — highlighted below.</div>` : "";
+  let groups;
+  if (isFirm) {
+    const m = {}; ls.forEach((l) => { const k = (l.source_name || "— Unknown CP —").trim(); (m[k] = m[k] || []).push(l); });
+    groups = Object.entries(m).sort((a, b) => b[1].length - a[1].length).map(([cp, leads]) => {
+      const cur = currentFirmOfCP(cp); const movedAway = !!(cur && cur.toLowerCase() !== f.firm.toLowerCase());
+      return { label: `<span class="f360-g-name">${esc(cp)}</span>${movedAway ? `<span class="f360-moved-badge">moved → ${esc(cur)}</span>` : ""}`, leads };
+    });
+  } else {
+    const cur = currentFirmOfCP(f.cp);
+    const m = {}; ls.forEach((l) => { const k = creditedFirm(l) || "— No firm —"; (m[k] = m[k] || []).push(l); });
+    groups = Object.entries(m).sort((a, b) => b[1].length - a[1].length).map(([firm, leads]) => {
+      const movedAway = !!(cur && firm !== "— No firm —" && cur.toLowerCase() !== firm.toLowerCase());
+      return { label: `<span class="f360-g-name">${esc(firm)}</span>${movedAway ? `<span class="f360-moved-badge">former firm · now ${esc(cur)}</span>` : `<span class="f360-cur-badge">current</span>`}`, leads };
+    });
+  }
+  const groupsHtml = groups.map((g, i) => `<details class="f360-group"${i === 0 ? " open" : ""}>
+      <summary class="f360-g-head"><span class="firm-chev">▸</span>${g.label}<span class="f360-g-count">${g.leads.length} enquir${g.leads.length === 1 ? "y" : "ies"}</span></summary>
+      ${f360Table(g.leads, isFirm)}
+    </details>`).join("");
+  return hero + rangeNote + movedNote + `<div class="pf-section-title">${isFirm ? "By CP (employee)" : "By firm (credited)"} — tap to expand</div>` + (groups.length ? groupsHtml : `<div class="empty">No enquiries in this period.</div>`);
+}
+function f360Table(leads, isFirm) {
+  const rows = leads.map((l) => {
+    const mv = isFirm ? leadMoved(l, f360.firm) : leadMoved(l, creditedFirm(l));
+    const who = isFirm ? esc(l.source_name || "—") : esc(creditedFirm(l) || "—");
+    const projs = (l.projects_shared || []).map((n) => esc(n) + ((l.units || {})[n] ? " (" + esc((l.units || {})[n]) + ")" : "")).join(", ") || "—";
+    return `<tr class="f360-row rowlink${mv ? " f360-moved-row" : ""}" data-profile="lead:${l.id}">
+      <td><span class="f360-cp-chip">${who}</span></td>
+      <td><b>${esc(l.customer_name) || esc(l.lead_number)}</b><div class="fu-meta">${telLink(l.customer_mobile)}</div></td>
+      <td class="fu-meta">${projs}</td>
+      <td class="nowrap">${l.budget ? `<span class="chip-budget">${esc(l.budget)}</span>` : "—"}</td>
+      <td class="nowrap">${esc(l.lead_date) || "—"}</td>
+      <td>${badge(l.stage)}</td>
+      <td>${badge(l.status)}</td>
+    </tr>`;
+  }).join("");
+  return `<div class="table-wrap"><table class="f360-table"><thead><tr>${[isFirm ? "CP (employee)" : "Firm (credited)", "Customer", "Projects (unit)", "Budget", "Date", "Stage", "Status"].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function wireF360() {
+  const from = document.getElementById("f360From"), to = document.getElementById("f360To");
+  const rerender = () => { const inner = document.getElementById("f360inner"); if (inner) inner.innerHTML = firm360Inner(); };
+  if (from) from.onchange = () => { f360.from = from.value; rerender(); };
+  if (to) to.onchange = () => { f360.to = to.value; rerender(); };
+  const rst = document.getElementById("f360Reset"); if (rst) rst.onclick = () => { f360.from = ""; f360.to = ""; if (from) from.value = ""; if (to) to.value = ""; rerender(); };
+  const pr = document.getElementById("f360Print"); if (pr) pr.onclick = () => window.print();
+}
 function openProfile(spec) { const [t, id] = spec.split(":"); return t === "lead" ? openLeadProfile(Number(id)) : t === "customer" ? openCustomer360(Number(id)) : openBrokerProfile(Number(id)); }
 
 /* ---------- Global click handling ---------- */
@@ -2076,6 +2274,8 @@ document.addEventListener("click", (e) => {
   const bl = e.target.closest("[data-brokerleads]"); if (bl) { const b = brokerById(Number(bl.getAttribute("data-brokerleads"))); if (b) listLeads("Enquiries via " + b.name, DB.leads.filter((l) => (l.source_name || "").trim().toLowerCase() === (b.name || "").trim().toLowerCase())); return; }
   const chip = e.target.closest("[data-chip]"); if (chip) { const t = document.getElementById("bType"); if (t) { t.value = chip.getAttribute("data-chip"); brokerRowsHtml(); } return; }
   const addfirm = e.target.closest("[data-addfirm]"); if (addfirm) { e.preventDefault(); const fm = addfirm.getAttribute("data-addfirm"); return openBrokerForm({ connect: "Live", firm: fm === "— No firm —" ? "" : fm }); }
+  const firm360 = e.target.closest("[data-firm360]"); if (firm360) { e.preventDefault(); return openFirm360(firm360.getAttribute("data-firm360")); }
+  const cp360 = e.target.closest("[data-cp360]"); if (cp360) { e.preventDefault(); return openCP360(cp360.getAttribute("data-cp360")); }
   const stage = e.target.closest("[data-stage]"); if (stage) return openDrill("stage:" + stage.getAttribute("data-stage"));
   const grade = e.target.closest("[data-grade]"); if (grade) return openDrill("grade:" + grade.getAttribute("data-grade"));
   const prof = e.target.closest("[data-profile]"); if (prof) return openProfile(prof.getAttribute("data-profile"));
@@ -2101,7 +2301,20 @@ document.addEventListener("click", (e) => {
     if (act === "editproj") { closeModal(); return openProjectForm(DB.projects.find((x) => x.id === id)); }
     if (act === "delproj") return confirmDel("projects", id);
   }
+  const imgc = e.target.closest("[data-imgclear]"); if (imgc) { setImageValue(imgc.getAttribute("data-imgclear"), ""); return; }
+  const lb = e.target.closest("[data-lightbox]"); if (lb) { const el = document.getElementById(lb.getAttribute("data-lightbox")); if (el && el.value) return openLightbox(el.value); return; }
+  const li = e.target.closest("[data-lightimg]"); if (li) { const src = li.getAttribute("data-lightimg"); if (src) return openLightbox(src); }
   const side = e.target.closest("[data-action]"); if (side) return sideAction(side.getAttribute("data-action"));
+});
+// Photo pickers: compress on choose, then update the hidden value + preview.
+document.addEventListener("change", (e) => {
+  const f = e.target.closest("[data-imgfor]");
+  if (f && f.files && f.files[0]) {
+    const id = f.getAttribute("data-imgfor");
+    toast("Compressing photo…");
+    compressImage(f.files[0], (dataUrl) => { setImageValue(id, dataUrl); if (dataUrl) toast("Photo added ✓"); });
+    f.value = "";
+  }
 });
 function confirmDel(entity, id) { if (confirm("Delete this record? This cannot be undone.")) { removeRow(entity, id); toast("Deleted"); closeModal(); go(active); } }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
