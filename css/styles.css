@@ -306,6 +306,8 @@ p { margin:0 0 1rem; }
 .tc-stars { color:var(--accent-2); letter-spacing:3px; font-size:.95rem; margin-bottom:1rem; }
 .tc-quote { font-family:var(--serif); font-weight:500; font-size:clamp(1.1rem,1.9vw,1.45rem); line-height:1.45; letter-spacing:-.01em; color:var(--ink); margin:0 0 1.4rem; }
 .tc-who b { font-size:1rem; font-weight:600; } .tc-who span { display:block; font-size:.85rem; color:var(--gray); margin-top:2px; }
+.tc-contact { display:flex; flex-wrap:wrap; justify-content:center; gap:6px 12px; margin-top:8px; font-size:.78rem; color:var(--gray); letter-spacing:.01em; }
+.tc-contact .tc-verified { color:#0d9488; font-weight:600; }
 .testi-dots { display:flex; gap:8px; justify-content:center; margin-top:26px; }
 .testi-dots button { width:8px; height:8px; border-radius:50%; border:none; background:var(--line); cursor:pointer; padding:0; transition:background .3s,width .3s; }
 .testi-dots button.active { background:var(--ink); width:22px; border-radius:999px; }

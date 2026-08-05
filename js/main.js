@@ -174,6 +174,15 @@
   }
 
   let TESTI = [], testiIdx = 0, testiTimer = null;
+  // Privacy: the CRM keeps the full contact details, but the PUBLIC site only ever
+  // shows a masked hint (e.g. mobile *****82, email s***1@gmail.com).
+  function maskMobile(m) { const d = (m || "").replace(/\D/g, ""); if (!d) return ""; return "*****" + d.slice(-2); }
+  function maskEmail(e) {
+    e = (e || "").trim(); const at = e.indexOf("@"); if (at < 1) return "";
+    const user = e.slice(0, at), dom = e.slice(at + 1);
+    const u = user.length <= 2 ? user[0] + "***" : user[0] + "***" + user[user.length - 1];
+    return u + "@" + dom;
+  }
   async function renderTestimonials() {
     const stage = document.getElementById("testiFeature"), dots = document.getElementById("testiDots");
     TESTI = await Store.testimonials(false);
@@ -186,6 +195,7 @@
         <div class="tc-stars">${"★".repeat(t.rating || 5)}</div>
         <p class="tc-quote">&ldquo;${esc(t.text)}&rdquo;</p>
         <div class="tc-who"><b>${esc(t.name)}</b><span>${esc(t.role || "")}</span></div>
+        ${(t.mobile || t.email || t.who) ? `<div class="tc-contact">${t.who ? `<span class="tc-verified">✓ ${esc(t.who)}</span>` : ""}${t.mobile ? `<span>📱 ${esc(maskMobile(t.mobile))}</span>` : ""}${t.email ? `<span>✉ ${esc(maskEmail(t.email))}</span>` : ""}</div>` : ""}
       </article>`).join("");
     stage.querySelectorAll(".orbit-card").forEach(c => c.addEventListener("click", () => { const i = +c.dataset.i; if (i !== testiIdx) { layout(i); resetTestiTimer(); } }));
     dots.innerHTML = TESTI.map((_, i) => `<button data-i="${i}" aria-label="Testimonial ${i + 1}"></button>`).join("");
