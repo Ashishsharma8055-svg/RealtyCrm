@@ -195,7 +195,7 @@
         <div class="tc-stars">${"★".repeat(t.rating || 5)}</div>
         <p class="tc-quote">&ldquo;${esc(t.text)}&rdquo;</p>
         <div class="tc-who"><b>${esc(t.name)}</b><span>${esc(t.role || "")}</span></div>
-        ${(t.mobile || t.email || t.who) ? `<div class="tc-contact">${t.who ? `<span class="tc-verified">✓ ${esc(t.who)}</span>` : ""}${t.mobile ? `<span>📱 ${esc(maskMobile(t.mobile))}</span>` : ""}${t.email ? `<span>✉ ${esc(maskEmail(t.email))}</span>` : ""}</div>` : ""}
+        ${(() => { const mm = t.mobileMasked || maskMobile(t.mobile); const em = t.emailMasked || maskEmail(t.email); return (mm || em || t.who) ? `<div class="tc-contact">${t.who ? `<span class="tc-verified">✓ ${esc(t.who)}</span>` : ""}${mm ? `<span>📱 ${esc(mm)}</span>` : ""}${em ? `<span>✉ ${esc(em)}</span>` : ""}</div>` : ""; })()}
       </article>`).join("");
     stage.querySelectorAll(".orbit-card").forEach(c => c.addEventListener("click", () => { const i = +c.dataset.i; if (i !== testiIdx) { layout(i); resetTestiTimer(); } }));
     dots.innerHTML = TESTI.map((_, i) => `<button data-i="${i}" aria-label="Testimonial ${i + 1}"></button>`).join("");

@@ -85,6 +85,11 @@ const SEED_TARGETS = { month:new Date().toISOString().slice(0,7), target:50 };
 const norm = (s)=>(s||"").toString().trim().toLowerCase().replace(/\s+/g," ");
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const clone = (o)=>JSON.parse(JSON.stringify(o));
+// Privacy masks — the PUBLIC testimonials collection never stores raw contact details,
+// only these masked hints (e.g. mobile *****82, email s***1@gmail.com). Full contact
+// is kept in the admin-only `testimonial_contacts` collection.
+const maskMobile = (m)=>{ const d=(m||"").toString().replace(/\D/g,""); return d?("*****"+d.slice(-2)):""; };
+const maskEmail = (e)=>{ e=(e||"").toString().trim(); const at=e.indexOf("@"); if(at<1) return ""; const u=e.slice(0,at),dom=e.slice(at+1); return (u.length<=2?u[0]+"***":u[0]+"***"+u[u.length-1])+"@"+dom; };
 
 const LocalAdapter = (()=>{
   const KEY="cnd_db_v2";
@@ -113,7 +118,8 @@ const LocalAdapter = (()=>{
     async savePartner(p){ const d=db(); p.id=p.id||uid(); const i=d.partners.findIndex(x=>x.id===p.id); if(i>=0) d.partners[i]={...d.partners[i],...p}; else d.partners.push(p); save(d); return p; },
     async deletePartner(id){ const d=db(); d.partners=d.partners.filter(p=>p.id!==id); save(d); },
     async testimonials(all){ const t=db().testimonials; return all?t:t.filter(x=>x.approved); },
-    async addTestimonial(t){ const d=db(); t.id=t.id||uid(); t.approved=false; t.ts=Date.now(); d.testimonials.push(t); save(d); return t; },
+    async addTestimonial(t){ const d=db(); t.id=t.id||uid(); t.approved=false; t.ts=Date.now(); t.mobileMasked=maskMobile(t.mobile); t.emailMasked=maskEmail(t.email); d.testimonials.push(t); save(d); return t; },
+    async testimonialContacts(){ return db().testimonials.filter(t=>t.mobile||t.email).map(t=>({id:t.id,name:t.name,mobile:t.mobile||"",email:t.email||"",who:t.who||""})); },
     async setTestimonialApproved(id,v){ const d=db(); const t=d.testimonials.find(x=>x.id===id); if(t) t.approved=v; save(d); },
     async deleteTestimonial(id){ const d=db(); d.testimonials=d.testimonials.filter(t=>t.id!==id); save(d); },
     async bulkUpsertProjects(rows){ const d=db(); const r=mergeProjects(d.projects,rows); d.projects=r.list; save(d); return r.report; },
@@ -172,10 +178,34 @@ const FirebaseAdapter = (()=>{
     async partners(){ return all("partners"); },
     async savePartner(p){ const id=p.id; const d={...p}; delete d.id; return put("partners",id,d); },
     async deletePartner(id){ return del("partners",id); },
-    async testimonials(af){ const l=await all("testimonials"); let list; if(l.length){ list=l; } else { const m=await catMeta(); list=m.testimonialsInit?[]:clone(SEED_TESTIMONIALS); } return af?list:list.filter(x=>x.approved); },
-    async addTestimonial(t){ await materialize("testimonials",SEED_TESTIMONIALS,"testimonialsInit"); t.approved=false; t.ts=Date.now(); return put("testimonials",null,t); },
+    async testimonials(af){
+      if(af){ // ADMIN wants everything (incl. pending). Rules require admin auth.
+        const l=await all("testimonials"); if(l.length) return l;
+        const m=await catMeta(); return m.testimonialsInit?[]:clone(SEED_TESTIMONIALS);
+      }
+      // PUBLIC: query approved-only so the security rule permits the read and no
+      // pending/unmoderated content is ever exposed.
+      try{
+        const {db,fs}=await ensure();
+        const snap=await fs.getDocs(fs.query(fs.collection(db,"testimonials"), fs.where("approved","==",true)));
+        const l=snap.docs.map(d=>({id:d.id,...d.data()}));
+        if(l.length) return l;
+        const m=await catMeta(); return m.testimonialsInit?[]:clone(SEED_TESTIMONIALS).filter(x=>x.approved);
+      }catch(e){ return clone(SEED_TESTIMONIALS).filter(x=>x.approved); }
+    },
+    // The PUBLIC doc carries only masked contact hints. Full contact goes to the
+    // admin-only `testimonial_contacts` collection (visitors may create, only you read).
+    async addTestimonial(t){
+      await materialize("testimonials",SEED_TESTIMONIALS,"testimonialsInit");
+      const pub={ name:t.name||"", role:t.role||"", text:t.text||"", rating:t.rating||5, who:t.who||"",
+        mobileMasked:maskMobile(t.mobile), emailMasked:maskEmail(t.email), approved:false, ts:Date.now() };
+      const saved=await put("testimonials",null,pub);
+      if(t.mobile||t.email){ try{ await put("testimonial_contacts",saved.id,{ name:t.name||"", mobile:t.mobile||"", email:t.email||"", who:t.who||"", ts:Date.now() }); }catch(e){} }
+      return saved;
+    },
+    async testimonialContacts(){ try{ return await all("testimonial_contacts"); }catch(e){ return []; } },
     async setTestimonialApproved(id,v){ await materialize("testimonials",SEED_TESTIMONIALS,"testimonialsInit"); return put("testimonials",id,{approved:v}); },
-    async deleteTestimonial(id){ await materialize("testimonials",SEED_TESTIMONIALS,"testimonialsInit"); return del("testimonials",id); },
+    async deleteTestimonial(id){ await materialize("testimonials",SEED_TESTIMONIALS,"testimonialsInit"); try{ await del("testimonial_contacts",id); }catch(e){} return del("testimonials",id); },
     async bulkUpsertProjects(rows){ const cur=await all("projects"); const r=mergeProjects(cur,rows); for(const p of r.list){ const id=p.id; const d={...p}; delete d.id; await put("projects",id,d); } return r.report; },
     async bulkUpsertInventory(rows){ const cur=await all("inventory"); const r=mergeInventory(cur,rows); for(const u of r.list){ const id=u.id; const d={...u}; delete d.id; await put("inventory",id,d); } return r.report; },
     async customers(){ return all("customers"); },

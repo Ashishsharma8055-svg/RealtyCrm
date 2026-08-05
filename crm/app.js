@@ -3129,6 +3129,11 @@ async function populateTestimonials() {
   const S = WS(); const body = document.getElementById("testiRows"); if (!body) return;
   if (!S) { document.getElementById("testiEmpty").innerHTML = `<div class="empty">Website data layer not loaded.</div>`; return; }
   try { _testi = await S.testimonials(true); } catch (e) { _testi = []; }
+  // Full contact details live in the admin-only `testimonial_contacts` collection —
+  // merge them in for the admin view (the public site only ever sees masked hints).
+  let _contacts = {};
+  try { if (typeof S.testimonialContacts === "function") { (await S.testimonialContacts()).forEach((c) => { _contacts[String(c.id)] = c; }); } } catch (e) {}
+  _testi.forEach((t) => { const c = _contacts[String(t.id)]; if (c) { t.mobile = t.mobile || c.mobile; t.email = t.email || c.email; t.who = t.who || c.who; } });
   // Pending first (need your attention), then published.
   _testi.sort((a, b) => (a.approved === b.approved ? 0 : a.approved ? 1 : -1));
   const q = (document.getElementById("tq") ? document.getElementById("tq").value : "").toLowerCase();

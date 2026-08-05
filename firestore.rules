@@ -50,13 +50,35 @@ service cloud.firestore {
     match /partners/{id}   { allow read, write: if isAdmin(); }
 
     // ---- Testimonials: public can submit (unapproved); you moderate ----
+    // The PUBLIC doc must NOT contain raw contact details — only masked hints.
+    // Raw mobile/email go to the admin-only `testimonial_contacts` collection below.
     match /testimonials/{id} {
       allow read: if resource.data.approved == true || isAdmin();
-      allow create: if request.resource.data.approved == false
-                    && request.resource.data.name is string
-                    && request.resource.data.text is string
-                    && request.resource.data.text.size() < 600;
       allow update, delete: if isAdmin();
+      // Admin can write freely; the PUBLIC submission path is tightly constrained and
+      // must NOT contain raw personal contact fields (only masked hints).
+      allow create: if isAdmin() || (
+             request.resource.data.approved == false
+          && request.resource.data.name is string
+          && request.resource.data.name.size() < 80
+          && request.resource.data.text is string
+          && request.resource.data.text.size() < 600
+          && !('mobile' in request.resource.data)
+          && !('email' in request.resource.data)
+          && request.resource.data.keys().hasOnly(
+               ['name','role','text','rating','who','mobileMasked','emailMasked','approved','ts'])
+        );
+    }
+
+    // ---- Testimonial full contact (private): visitors may submit, ONLY you can read.
+    //      Mirrors the enquiries pattern so real mobile/email never become public.
+    match /testimonial_contacts/{id} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+             request.resource.data.name is string
+          && request.resource.data.name.size() < 80
+          && request.resource.data.keys().hasOnly(['name','mobile','email','who','ts'])
+        );
     }
 
     // ---- Admin-only support collections (used by the built-in admin panel) ----
