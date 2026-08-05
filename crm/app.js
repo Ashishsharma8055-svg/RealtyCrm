@@ -412,7 +412,14 @@ const GCAL_CALENDAR_ID = "e7a7860fc16abea9eb6ba3bc112188f20129f23696687e97c333d2
 let gcalToken = null, gcalTokenExp = 0, gcalTokenClient = null, gcalPending = null;
 function gcalLibReady() { return !!(window.google && google.accounts && google.accounts.oauth2); }
 function gcalEnabled() { return !!GCAL_CLIENT_ID; }
-function gcalConnected() { try { return localStorage.getItem("rcrm_gcal") === "1"; } catch { return false; } }
+// Connection state is stored in the CLOUD (DB.gcal_connected) so it stays "connected"
+// on every device you sign in from — not just the one where you first authorised.
+// (localStorage is kept too as a fast local hint.)
+function gcalConnected() { try { if (typeof DB !== "undefined" && DB && DB.gcal_connected) return true; return localStorage.getItem("rcrm_gcal") === "1"; } catch { return false; } }
+function gcalSetConnected(v) {
+  try { if (v) localStorage.setItem("rcrm_gcal", "1"); else localStorage.removeItem("rcrm_gcal"); } catch {}
+  try { if (typeof DB !== "undefined" && DB) { if (v) DB.gcal_connected = 1; else delete DB.gcal_connected; save(); } } catch {}
+}
 function gcalInitClient() {
   if (gcalTokenClient || !gcalEnabled() || !gcalLibReady()) return;
   gcalTokenClient = google.accounts.oauth2.initTokenClient({
@@ -422,7 +429,7 @@ function gcalInitClient() {
       if (resp && resp.access_token) {
         gcalToken = resp.access_token;
         gcalTokenExp = Date.now() + ((resp.expires_in ? resp.expires_in * 1000 : 3600000) - 60000);
-        try { localStorage.setItem("rcrm_gcal", "1"); } catch {}
+        gcalSetConnected(true);
         try { updateStatusLights(); } catch (e) {}
         if (gcalPending) { const p = gcalPending; gcalPending = null; p(); }
         else toast("Google Calendar connected");
@@ -2288,7 +2295,7 @@ function openProfile(spec) { const [t, id] = spec.split(":"); return t === "lead
 document.addEventListener("click", (e) => {
   const pill = e.target.closest("[data-pill]"); if (pill) { const raw = pill.getAttribute("data-pill"), sep = raw.indexOf("::"); const fid = raw.slice(0, sep), val = raw.slice(sep + 2); const inp = document.getElementById(fid); if (inp) { inp.value = val; inp.dispatchEvent(new Event("change")); } const set = pill.parentElement; if (set) set.querySelectorAll(".pill").forEach((b) => b.classList.toggle("on", b === pill)); return; }
   const star = e.target.closest("[data-star]"); if (star) { const raw = star.getAttribute("data-star"), sep = raw.indexOf("::"); const fid = raw.slice(0, sep), val = Number(raw.slice(sep + 2)); const inp = document.getElementById(fid); if (inp) inp.value = val || ""; const set = star.parentElement; if (set) set.querySelectorAll(".starbtn").forEach((b, i) => b.classList.toggle("on", i < val)); return; }
-  const nav = e.target.closest("[data-nav]"); if (nav) return go(nav.getAttribute("data-nav"));
+  const nav = e.target.closest("[data-nav]"); if (nav) { document.body.classList.remove("nav-open"); return go(nav.getAttribute("data-nav")); }
   const rfEl = e.target.closest("[data-rf]"); if (rfEl) return toggleReportFilter(rfEl.getAttribute("data-rf"));
   const rfrm = e.target.closest("[data-rfremove]"); if (rfrm) { delete reportFilters[rfrm.getAttribute("data-rfremove")]; return renderReportBody(); }
   if (e.target.closest("[data-rfclear]")) { reportFilters = {}; return renderReportBody(); }
@@ -2527,6 +2534,10 @@ let _refreshing = false;
 function wireRefreshBtn() {
   const btn = document.getElementById("refreshBtn");
   if (btn && !btn._wired) { btn._wired = 1; btn.onclick = refreshAll; }
+  const nt = document.getElementById("navToggle");
+  if (nt && !nt._wired) { nt._wired = 1; nt.onclick = () => document.body.classList.toggle("nav-open"); }
+  const bd = document.querySelector(".nav-backdrop");
+  if (bd && !bd._wired) { bd._wired = 1; bd.onclick = () => document.body.classList.remove("nav-open"); }
 }
 async function refreshAll() {
   if (_refreshing) return;
@@ -2847,8 +2858,10 @@ async function bulkDeleteStore(tableId, delFn, label, after) {
   const ids = selectedBulk(tableId);
   if (!ids.length) return toast("Tick some rows first");
   if (!confirm(`Delete ${ids.length} selected ${label}? This cannot be undone.`)) return;
-  for (const id of ids) { try { await delFn(id); } catch (e) {} }
-  toast(`Deleted ${ids.length} ${label}`); if (after) after();
+  let okc = 0, failc = 0, lastErr = "";
+  for (const id of ids) { try { await delFn(id); okc++; } catch (e) { failc++; lastErr = (e && (e.code || e.message)) || String(e); } }
+  toast(failc ? `Deleted ${okc}, ${failc} failed${lastErr ? " · " + lastErr : ""}` : `Deleted ${okc} ${label}`);
+  if (after) after();
 }
 
 /* ---- Excel/CSV template · import · export (shared) ---- */
@@ -3087,8 +3100,12 @@ function openUnitForm(existing) {
 async function deleteUnit(id) {
   const S = WS(); if (!S) return;
   if (!confirm("Delete this unit?")) return;
-  try { await S.deleteUnit(id); } catch (e) {}
-  toast("Unit deleted"); populateInventory();
+  try {
+    await S.deleteUnit(id);
+    const still = (await S.inventory()).some((u) => String(u.id) === String(id));
+    toast(still ? "⚠️ Couldn't delete — it came back. Are you signed in as admin?" : "Unit deleted");
+  } catch (e) { toast("⚠️ Delete failed: " + ((e && (e.code || e.message)) || String(e))); }
+  populateInventory();
 }
 
 /* ====================== TESTIMONIALS ====================== */
@@ -3119,7 +3136,7 @@ async function populateTestimonials() {
   document.getElementById("testiEmpty").innerHTML = rows.length ? "" : `<div class="empty">No testimonials yet. Add one, or they arrive when visitors submit a review on your site.</div>`;
   body.innerHTML = rows.map((t) => `<tr>
       <td><input type="checkbox" class="bulk" data-id="${esc(String(t.id))}"></td>
-      <td><b>${esc(t.name) || "—"}</b></td>
+      <td><b>${esc(t.name) || "—"}</b>${t.who ? ` <span class="badge b-default">${esc(t.who)}</span>` : ""}${(t.mobile || t.email) ? `<div class="fu-meta">${[t.mobile, t.email].filter(Boolean).map(esc).join(" · ")}</div>` : ""}</td>
       <td class="nowrap">${esc(t.role) || "—"}</td>
       <td class="nowrap" style="color:#b3762f">${"★".repeat(Number(t.rating) || 5)}</td>
       <td class="fu-meta" style="max-width:300px">${esc(truncate(t.text, 100))}</td>
@@ -3145,8 +3162,12 @@ async function toggleTestimonial(id) {
 async function deleteTesti(id) {
   const S = WS(); if (!S) return;
   if (!confirm("Delete this testimonial?")) return;
-  try { await S.deleteTestimonial(id); } catch (e) {}
-  toast("Testimonial deleted"); populateTestimonials();
+  try {
+    await S.deleteTestimonial(id);
+    const still = (await S.testimonials(true)).some((t) => String(t.id) === String(id));
+    toast(still ? "⚠️ Couldn't delete — it came back. Are you signed in as admin?" : "Testimonial deleted");
+  } catch (e) { toast("⚠️ Delete failed: " + ((e && (e.code || e.message)) || String(e))); }
+  populateTestimonials();
 }
 function openTestimonialForm() {
   const S = WS(); if (!S) return toast("Website data layer not loaded");

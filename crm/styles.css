@@ -624,9 +624,12 @@ tbody tr:hover { background: var(--slate-50); }
 @media (max-width: 820px) {
   .topbar { flex-wrap: wrap; }
   .topbar h1 { font-size: 18px; }
-  .sidebar { width: 68px; }
-  .brand-name, .brand-sub, .nav a span, .side-foot { display: none; }
-  .nav a { justify-content: center; }
+  /* Sidebar becomes a slide-in drawer (full content, incl. status lights) */
+  .sidebar { position: fixed; top: 0; left: 0; height: 100vh; width: 250px; z-index: 60;
+    transform: translateX(-100%); transition: transform .25s ease; box-shadow: 0 0 40px rgba(0,0,0,.4); }
+  body.nav-open .sidebar { transform: translateX(0); }
+  .nav-backdrop { display: none; position: fixed; inset: 0; background: rgba(2,6,23,.5); z-index: 55; }
+  body.nav-open .nav-backdrop { display: block; }
   .cols-4 { grid-template-columns: repeat(2,1fr); }
   .cols-3, .cols-2 { grid-template-columns: 1fr; }
   .cust-grid { grid-template-columns: 1fr; }
@@ -643,12 +646,22 @@ tbody tr:hover { background: var(--slate-50); }
   .modal.wide, .modal.narrow { max-width: 96vw; }
   .modal-body { padding: 14px; max-height: 82vh; -webkit-overflow-scrolling: touch; }
   .table-wrap { -webkit-overflow-scrolling: touch; }
+  /* .drill-table sets overflow:hidden for rounded corners — that also killed the
+     horizontal scroll on phones. Re-enable horizontal scrolling inside it. */
+  .table-wrap, .drill-table { overflow-x: auto; overflow-y: visible; }
   .drill-table table { min-width: 560px; }
   .modal-body table, .drill-table table, .table-wrap table { font-size: 12px; }
   .modal-body th, .modal-body td, .table-wrap th, .table-wrap td { padding: 8px 10px; }
   .drill-stats { flex-wrap: wrap; }
   .tel { text-decoration-thickness: 2px; }   /* bigger tap target on phone */
+  .nav-toggle { display: inline-flex !important; }
 }
+/* Hamburger (mobile only) */
+.nav-toggle { display: none; align-items: center; justify-content: center; width: 40px; height: 40px;
+  border: 1px solid var(--slate-200); background: var(--panel); color: var(--slate-600); border-radius: 10px;
+  font-size: 20px; cursor: pointer; margin-right: 10px; flex-shrink: 0; }
+.nav-toggle:hover { background: var(--slate-50); }
+.topbar-left { display: flex; align-items: center; min-width: 0; }
 
 /* ===== Brokers: By-Firm grouped view ===== */
 .bgrp-seg { display: inline-flex; gap: 6px; margin-right: 4px; }

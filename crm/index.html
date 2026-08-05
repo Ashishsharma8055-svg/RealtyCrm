@@ -32,12 +32,16 @@
       </div>
       <input type="file" id="importFile" accept="application/json" hidden />
     </aside>
+    <div class="nav-backdrop"></div>
 
     <div class="main">
       <header class="topbar">
-        <div>
-          <h1 id="pageTitle">Dashboard</h1>
-          <p id="pageSub" class="sub">Live overview of your pipeline</p>
+        <div class="topbar-left">
+          <button id="navToggle" class="nav-toggle" aria-label="Open menu" title="Menu">☰</button>
+          <div>
+            <h1 id="pageTitle">Dashboard</h1>
+            <p id="pageSub" class="sub">Live overview of your pipeline</p>
+          </div>
         </div>
         <div class="topbar-actions">
           <button id="refreshBtn" class="btn outline" aria-label="Refresh data" title="Refresh — pull the latest data" style="padding:9px 11px">
@@ -129,6 +133,6 @@
   <script src="../js/data.js"></script>
   <!-- SheetJS — same library admin.html uses, for Excel Template/Import/Export. -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=19"></script>
 </body>
 </html>

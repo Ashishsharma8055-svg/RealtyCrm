@@ -258,11 +258,13 @@
     <button class="close-x" data-close>✕</button>
     <div class="modal-head"><h3>Share your experience</h3><p>Your review appears after a quick moderation check.</p></div>
     <div class="modal-body">
-      <div class="field"><label>Your name</label><input id="tName" maxlength="60" placeholder="e.g. Rajeev Malhotra" /></div>
+      <div class="field"><label>I am a <span style="color:#c0392b">*</span></label><select id="tWho"><option value="">Select…</option><option value="Customer">Customer</option><option value="Channel Partner">Channel Partner</option></select></div>
+      <div class="field"><label>Your name <span style="color:#c0392b">*</span></label><input id="tName" maxlength="60" placeholder="e.g. Rajeev Malhotra" /></div>
       <div class="field"><label>Where you're based / your role</label><input id="tRole" maxlength="60" placeholder="e.g. NRI Buyer, Dubai" /></div>
-      <div class="field"><label>Email <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--faint)">(optional — shows your Gravatar photo)</span></label><input id="tEmail" type="email" maxlength="80" placeholder="you@email.com" /></div>
+      <div class="field"><label>Email <span style="color:#c0392b">*</span></label><input id="tEmail" type="email" maxlength="80" placeholder="you@email.com" required /></div>
+      <div class="field"><label>Mobile number <span style="color:#c0392b">*</span></label><input id="tMobile" type="tel" maxlength="20" placeholder="+91 98xxx xxxxx" required /></div>
       <div class="field"><label>Rating</label><select id="tRating"><option value="5">★★★★★ Excellent</option><option value="4">★★★★ Very good</option><option value="3">★★★ Good</option></select></div>
-      <div class="field"><label>Your words</label><textarea id="tText" rows="4" maxlength="400" style="font-family:var(--sans);padding:.7rem;border:1px solid var(--line);border-radius:10px;background:var(--paper)" placeholder="Tell others about your experience..."></textarea></div>
+      <div class="field"><label>Your words <span style="color:#c0392b">*</span></label><textarea id="tText" rows="4" maxlength="400" style="font-family:var(--sans);padding:.7rem;border:1px solid var(--line);border-radius:10px;background:var(--paper)" placeholder="Tell others about your experience..."></textarea></div>
       <button class="btn btn-gold btn-block" id="tSubmit">Submit review</button>
     </div>
   </div>

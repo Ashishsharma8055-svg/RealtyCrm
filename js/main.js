@@ -223,14 +223,21 @@
     document.getElementById("tSubmit").addEventListener("click", async () => {
       const name = document.getElementById("tName").value.trim(), role = document.getElementById("tRole").value.trim(), text = document.getElementById("tText").value.trim(), rating = parseInt(document.getElementById("tRating").value, 10);
       const emailEl = document.getElementById("tEmail"); const email = emailEl ? emailEl.value.trim() : "";
+      const whoEl = document.getElementById("tWho"); const who = whoEl ? whoEl.value : "";
+      const mobileEl = document.getElementById("tMobile"); const mobile = mobileEl ? mobileEl.value.trim() : "";
+      if (!who) { toast("Please tell us if you're a Customer or Channel Partner.", "err"); return; }
       if (name.length < 2 || text.length < 8) { toast("Please add your name and a few words.", "err"); return; }
+      if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast("Please enter a valid email address.", "err"); return; }
+      if (mobile.replace(/\D/g, "").length < 8) { toast("Please enter a valid mobile number.", "err"); return; }
       if (isAbusive(text) || isAbusive(name)) { toast("Your comment contains inappropriate language and can't be posted.", "err"); return; }
-      try { await Store.addTestimonial({ name, role, text, rating, email }); }
+      try { await Store.addTestimonial({ name, role, text, rating, email, mobile, who }); }
       catch (e) { toast("Couldn't submit right now — please try again later.", "err"); return; }
       // Submitted as pending; it appears on the site once you approve it in the CRM.
       close();
       document.getElementById("tName").value = document.getElementById("tRole").value = document.getElementById("tText").value = "";
       if (emailEl) emailEl.value = "";
+      if (mobileEl) mobileEl.value = "";
+      if (whoEl) whoEl.value = "";
       toast("Thanks! Your review has been submitted for approval. ☕", "ok");
     });
   }
