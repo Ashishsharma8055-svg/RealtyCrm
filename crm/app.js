@@ -1188,6 +1188,29 @@ function repOverview() {
 }
 
 /* ---- CHANNELS / BROKERS ---- */
+// Firm-grouped, expandable channel view for the report — mirrors the Brokers page.
+// Each firm expands to its CPs; each CP expands to their enquiry details. Producing
+// firms sort first. A 📊 360 button opens the full working report for firm or CP.
+function repReportFirms(L, B) {
+  const groups = {};
+  B.forEach((b) => { const k = (b.firm || "").trim() || "— No firm —"; (groups[k] = groups[k] || []).push(b); });
+  const firmLeadCount = (firm) => L.filter((l) => creditedFirm(l).toLowerCase() === firm.toLowerCase()).length;
+  const names = Object.keys(groups).sort((a, b) => firmLeadCount(b) - firmLeadCount(a) || groups[b].length - groups[a].length || a.localeCompare(b));
+  const cards = names.map((firm) => {
+    const list = groups[firm].slice().sort((a, b) => leadsOfBroker(b.name, L).length - leadsOfBroker(a.name, L).length || (a.name || "").localeCompare(b.name || ""));
+    const live = list.filter((x) => x.connect === "Live").length;
+    const grade = firmGrade(firm);
+    const fLeads = firmLeadCount(firm);
+    const emp = list.map((b) => {
+      const ls = leadsOfBroker(b.name, L).slice().sort((x, y) => y.id - x.id);
+      const active = ls.filter((l) => l.status === "Active").length;
+      const enq = ls.length ? ls.map((l) => `<div class="rep-emp-enq rowlink" data-profile="lead:${l.id}">${badge(l.status)} <b>${esc(l.customer_name) || esc(l.lead_number)}</b> <span class="fu-meta">${telLink(l.customer_mobile)}</span> · ${esc(l.requirement) || "—"}${l.budget ? ` <span class="chip-budget">${esc(l.budget)}</span>` : ""} · ${esc((l.projects_shared || []).join(", ")) || "—"} <span class="fu-meta">${esc(l.lead_date) || ""}</span></div>`).join("") : `<div class="rep-emp-empty">No enquiry brought in this period.</div>`;
+      return `<details class="rep-emp"><summary class="rep-emp-head"><span class="firm-chev">▸</span><span class="rowlink" data-profile="broker:${b.id}">${esc(b.name)}</span> ${badge(b.connect)}${ls.length ? `<span class="rep-emp-count">${ls.length} enq${active ? ` · ${active} active` : ""}</span>` : `<span class="rep-emp-none">never brought</span>`}<span class="rep-emp-actions"><button type="button" class="btn ghost sm" data-cp360="${esc(b.name)}">📊 360</button></span></summary><div class="rep-emp-body">${enq}</div></details>`;
+    }).join("");
+    return `<details class="firm-card rep-firm-card"${fLeads ? " open" : ""}><summary class="firm-head"><span class="firm-chev">▸</span><span class="firm-name">${esc(firm)}</span>${grade ? `<span class="firm-grade">Grade ${badge(grade)}</span>` : ""}<span class="firm-badge">${list.length} broker${list.length > 1 ? "s" : ""}</span><span class="firm-meta">${live} live${fLeads ? ` · ${fLeads} enquir${fLeads === 1 ? "y" : "ies"}` : " · no enquiry"}</span><span class="firm-add-wrap">${firm !== "— No firm —" ? `<button type="button" class="btn ghost sm" data-firm360="${esc(firm)}">📊 360 Report</button>` : ""}</span></summary><div class="firm-body">${emp}</div></details>`;
+  }).join("");
+  return cards || `<div class="empty">No channels in this scope.</div>`;
+}
 function repBrokers() {
   const L = reportLeads(), B = dedupeByName(reportBrokersSet()), t = today(), wk = addDays(-7), mo = addDays(-30);
   const cnt = (a, k, v) => a.filter((x) => (x[k] || "") === v).length;
@@ -1240,6 +1263,7 @@ function repBrokers() {
   const newTable = repTable(["CP", "Firm", "Grade", "Empanelled on", granLabel()], newRows, "No channels empanelled yet.");
 
   const inner = kpis + charts +
+    `<div class="rep-subhead" style="margin-top:18px">Firms — expand for CPs &amp; their enquiries <span class="rep-hint">· producing firms first · 📊 360 for full report</span></div>` + repReportFirms(L, B) +
     `<div class="rep-subhead" style="margin-top:18px">Active channels — status-wise &amp; project-wise</div>` + activeTable +
     `<div class="rep-subhead" style="margin-top:18px">Had enquiry but now idle (3m+ or terminated)</div>` + idleTable +
     `<div class="rep-subhead" style="margin-top:18px">Channels who never brought an enquiry</div>` + neverTable +

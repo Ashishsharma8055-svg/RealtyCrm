@@ -769,3 +769,49 @@ tbody tr:hover { background: var(--slate-50); }
 .f360-moved-row { background:rgba(245,158,11,.09); }
 .f360-moved-row:hover { background:rgba(245,158,11,.16); }
 .f360-moved-row .f360-cp-chip { color:#b45309; background:rgba(245,158,11,.18); }
+
+/* Report: firm-grouped expandable channel block */
+.rep-firm-card { margin-bottom: 10px; }
+.rep-emp { border-top: 1px solid var(--slate-200); }
+.rep-emp:first-child { border-top: none; }
+.rep-emp-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; cursor: pointer; list-style: none; font-size: 13.5px; }
+.rep-emp-head::-webkit-details-marker { display: none; }
+.rep-emp[open] > .rep-emp-head .firm-chev { transform: rotate(90deg); }
+.rep-emp-head .firm-chev { transition: transform .18s; color: var(--slate-400); font-size: 11px; }
+.rep-emp-count { font-size: 11px; font-weight: 700; color: #0d9488; background: rgba(13,148,136,.12); padding: 2px 9px; border-radius: 999px; }
+.rep-emp-none { font-size: 11px; font-weight: 600; color: var(--slate-400); }
+.rep-emp-actions { margin-left: auto; }
+.rep-emp-body { padding: 4px 12px 12px 30px; display: flex; flex-direction: column; gap: 6px; }
+.rep-emp-enq { font-size: 12.5px; padding: 7px 10px; border: 1px solid var(--slate-200); border-radius: 8px; cursor: pointer; transition: background .13s, border-color .13s; }
+.rep-emp-enq:hover { background: var(--slate-50); border-color: var(--indigo); }
+.rep-emp-empty { font-size: 12px; color: var(--slate-400); padding: 4px 2px; }
+
+/* ---- Dark-mode readability fixes (dark navy text on dark panels) ---- */
+[data-theme="dark"] .rep-head h3,
+[data-theme="dark"] .cal-title,
+[data-theme="dark"] .day-time,
+[data-theme="dark"] .proj-card-name b,
+[data-theme="dark"] .proj-card-name,
+[data-theme="dark"] .firm-name,
+[data-theme="dark"] .pf-name,
+[data-theme="dark"] .f360-g-name,
+[data-theme="dark"] .cust-nm { color: #e8eef7; }
+[data-theme="dark"] .rep-subhead,
+[data-theme="dark"] .pf-section-title,
+[data-theme="dark"] .section-title { color: #aab6cc; }
+[data-theme="dark"] .rep-hint,
+[data-theme="dark"] .muted,
+[data-theme="dark"] .fu-meta,
+[data-theme="dark"] .f360-sub,
+[data-theme="dark"] .f360-range,
+[data-theme="dark"] .proj-card-meta { color: #8ea0bc; }
+[data-theme="dark"] .b-default { background:#26324a; color:#c6d1e2; }
+[data-theme="dark"] .chip-budget { background:#26324a; color:#c7d2fe; }
+[data-theme="dark"] .rep-emp-enq:hover { background:#1b2740; }
+[data-theme="dark"] .c360-enq:hover, [data-theme="dark"] .drill-summary { background:#131c31; }
+[data-theme="dark"] .rep-insight { background:#0e2233; border-color:#164b63; color:#bae6fd; }
+[data-theme="dark"] .rep-insight-k { color:#7dd3fc; }
+[data-theme="dark"] .drill-table thead th { background:#1a2440; color:#c7d2fe; border-bottom-color:#2b3a55; }
+[data-theme="dark"] .drill-table tbody tr:hover { background:#1b2740; }
+[data-theme="dark"] .f360-controls,
+[data-theme="dark"] .drill-summary { background:#131c31; }
