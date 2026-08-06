@@ -84,6 +84,15 @@ const SEED_TARGETS = { month:new Date().toISOString().slice(0,7), target:50 };
 
 const norm = (s)=>(s||"").toString().trim().toLowerCase().replace(/\s+/g," ");
 const uid = ()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+// Firestore document IDs cannot contain "/" (it's the path separator) and a few other
+// reserved forms. Build a safe, stable inventory id from project + unit no.
+const invId = (project,unitNo)=>{
+  let s = norm(project)+"|"+norm(unitNo);
+  s = s.replace(/[\/\\]+/g,"-")        // slashes → hyphen (the actual bug)
+       .replace(/[\x00-\x1f\x7f#?%\[\]*]/g,"-") // other awkward chars
+       .replace(/-{2,}/g,"-").replace(/^\.+|\.+$/g,"").trim();
+  return s || uid();
+};
 const clone = (o)=>JSON.parse(JSON.stringify(o));
 // Privacy masks — the PUBLIC testimonials collection never stores raw contact details,
 // only these masked hints (e.g. mobile *****82, email s***1@gmail.com). Full contact
@@ -108,7 +117,7 @@ const LocalAdapter = (()=>{
     async deleteProject(id){ const d=db(); const nm=((SEED_PROJECTS.find(s=>s.id===id)||{}).name)||id; d.projects=d.projects.filter(p=>p.id!==id); d.inventory=d.inventory.filter(u=>norm(u.project)!==norm(nm)); save(d); },
     async inventory(){ return db().inventory; },
     async inventoryFor(name){ return db().inventory.filter(u=>norm(u.project)===norm(name)); },
-    async saveUnit(u){ const d=db(); u.id=u.id||(norm(u.project)+"|"+norm(u.unitNo)); const i=d.inventory.findIndex(x=>x.id===u.id); if(i>=0) d.inventory[i]={...d.inventory[i],...u}; else d.inventory.push(u); save(d); return u; },
+    async saveUnit(u){ const d=db(); u.id=u.id||invId(u.project,u.unitNo); const i=d.inventory.findIndex(x=>x.id===u.id); if(i>=0) d.inventory[i]={...d.inventory[i],...u}; else d.inventory.push(u); save(d); return u; },
     async deleteUnit(id){ const d=db(); d.inventory=d.inventory.filter(u=>u.id!==id); save(d); },
     async enquiries(){ return db().enquiries.slice().sort((a,b)=>b.ts-a.ts); },
     async addEnquiry(e){ const d=db(); e.id=e.id||uid(); e.ts=e.ts||Date.now(); e.status=e.status||"Open"; d.enquiries.push(e); save(d); return e; },
@@ -169,7 +178,7 @@ const FirebaseAdapter = (()=>{
     async deleteProject(id){ return del("projects",id); },
     async inventory(){ const l=await all("inventory"); if(l.length) return l; const m=await catMeta(); return m.inventoryInit?[]:clone(SEED_INVENTORY); },
     async inventoryFor(name){ const l=await this.inventory(); return l.filter(u=>norm(u.project)===norm(name)); },
-    async saveUnit(u){ await materialize("inventory",SEED_INVENTORY,"inventoryInit"); const id=u.id||(norm(u.project)+"|"+norm(u.unitNo)); const d={...u}; delete d.id; return put("inventory",id,d); },
+    async saveUnit(u){ await materialize("inventory",SEED_INVENTORY,"inventoryInit"); const id=u.id||invId(u.project,u.unitNo); const d={...u}; delete d.id; return put("inventory",id,d); },
     async deleteUnit(id){ await materialize("inventory",SEED_INVENTORY,"inventoryInit"); return del("inventory",id); },
     async enquiries(){ const l=await all("enquiries"); return l.sort((a,b)=>(b.ts||0)-(a.ts||0)); },
     async addEnquiry(e){ e.ts=e.ts||Date.now(); e.status=e.status||"Open"; return put("enquiries",null,e); },
@@ -228,9 +237,9 @@ function mergeProjects(existing,incoming){
   return { list:Array.from(map.values()), report:{added,merged,skipped,total:map.size} };
 }
 function mergeInventory(existing,incoming){
-  const map=new Map(); existing.forEach(u=>map.set(norm(u.project)+"|"+norm(u.unitNo),u)); let added=0,merged=0,skipped=0;
+  const map=new Map(); existing.forEach(u=>map.set(invId(u.project,u.unitNo),u)); let added=0,merged=0,skipped=0;
   incoming.forEach(row=>{ const project=(row.project||row["Project Name"]||"").toString().trim(); const unitNo=(row.unitNo||row["Unit No"]||row["Unit No."]||row.unit||"").toString().trim(); if(!project||!unitNo){ skipped++; return; }
-    const key=norm(project)+"|"+norm(unitNo); const rec={ project, unitNo, size:(row.size||row.Size||"").toString(), desc:row.desc||row["Unit description"]||row["Unit Description"]||row.description||"", status:normalizeStatus(row.status||row.Status), bsp:parseCr(row.bsp||row.BSP||row["BSP (per sq.ft)"]||""), costingCr:parseCr(row.costingCr||row.Costing||row.costing||row.Cost) };
+    const key=invId(project,unitNo); const rec={ project, unitNo, size:(row.size||row.Size||"").toString(), desc:row.desc||row["Unit description"]||row["Unit Description"]||row.description||"", status:normalizeStatus(row.status||row.Status), bsp:parseCr(row.bsp||row.BSP||row["BSP (per sq.ft)"]||""), costingCr:parseCr(row.costingCr||row.Costing||row.costing||row.Cost) };
     if(map.has(key)){ const cur=map.get(key); Object.keys(rec).forEach(k=>{ if(rec[k]!==""&&rec[k]!=null) cur[k]=rec[k]; }); merged++; } else { rec.id=key; map.set(key,rec); added++; } });
   return { list:Array.from(map.values()), report:{added,merged,skipped,total:map.size} };
 }
