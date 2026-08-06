@@ -39,7 +39,7 @@ window.APP_CONFIG = {
   //          cost). A clean soft-gate that still makes visitors verify a code.
   // "firebase" = real SMS (needs Firebase Phone Auth fully set up + Blaze plan).
   // Launching with "demo" for now; switch to "firebase" later if/when you set up SMS.
-  otpMode: "demo",          // "demo" (on-screen code) | "firebase" (real SMS)
+  otpMode: "firebase",      // "demo" (on-screen code) | "firebase" (real SMS)
   demoOtpFixed: null,       // e.g. "123456" for a fixed demo code, or null for random
   demoAdminPass: "coffee-admin",
   brand: {
