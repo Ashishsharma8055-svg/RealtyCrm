@@ -839,7 +839,7 @@ function brokerImport() {
     r.onload = (ev) => {
       try {
         let rows = [];
-        if (!isCsv) { const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); }
+        if (!isCsv) { rows = readSheetRows(ev.target.result); }
         else rows = parseCSV(String(ev.target.result));
         if (!rows.length) return toast("That sheet has no data rows. Use the Template format.");
         const news = [], dups = [];
@@ -2941,11 +2941,7 @@ function sheetImport(target, after) {
       try {
         let rows = [];
         if (!isCsv) {
-          // Robust binary read via ArrayBuffer (readAsBinaryString is deprecated and
-          // fails on some browsers — this is the reliable path for .xlsx/.xls).
-          const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          rows = readSheetRows(ev.target.result);
         } else {
           rows = parseCSV(String(ev.target.result));
         }
@@ -2962,6 +2958,22 @@ function sheetImport(target, after) {
     if (isCsv) r.readAsText(f); else r.readAsArrayBuffer(f);
   };
   inp.click();
+}
+// Parse an .xlsx/.xls ArrayBuffer into row objects, trying several strategies so it
+// works across browsers and file variants. Throws a clear message if truly unreadable.
+function readSheetRows(buf) {
+  if (typeof XLSX === "undefined") throw new Error("spreadsheet engine not loaded — refresh and retry");
+  let wb = null, lastErr = null;
+  const tries = [
+    () => XLSX.read(new Uint8Array(buf), { type: "array" }),
+    () => XLSX.read(buf, { type: "array" }),
+    () => XLSX.read(buf, { type: "buffer" }),
+  ];
+  for (const t of tries) { try { const w = t(); if (w && w.SheetNames && w.SheetNames.length) { wb = w; break; } } catch (e) { lastErr = e; } }
+  if (!wb) throw (lastErr || new Error("file is not a readable .xlsx/.xls — re-save it as Excel or CSV"));
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("the first sheet is empty");
+  return XLSX.utils.sheet_to_json(ws, { defval: "" });
 }
 function parseCSV(text) {
   const lines = String(text).replace(/\r/g, "").split("\n").filter((l) => l.trim().length);
