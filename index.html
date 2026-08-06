@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Great+Vibes&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="css/styles.css" />
+<link rel="stylesheet" href="css/styles.css?v=3" />
 </head>
 <body>
 
@@ -19,7 +19,6 @@
     <nav class="nav-links">
       <a href="#projects">Projects</a>
       <a href="#services">Services</a>
-      <a href="#process">Process</a>
       <a href="#insights">Insights</a>
       <a class="btn btn-outline btn-sm" href="#contact">Book a Call</a>
     </nav>
@@ -86,8 +85,8 @@
         <div class="field"><label>Project</label><select id="fProject"><option value="">Any project</option></select></div>
         <div class="field"><label>Category</label><select id="fCategory"><option value="">Any status</option><option>Ready to Move</option><option>Under Construction</option></select></div>
         <div class="field"><label>Type</label><select id="fType"><option value="">Any type</option><option>Plot</option><option>Floor</option><option>High-rise</option></select></div>
-        <div class="field"><label>Budget (max)</label><select id="fBudget"><option value="">Any budget</option><option value="3">Up to ₹3 Cr</option><option value="4">Up to ₹4 Cr</option><option value="5">Up to ₹5 Cr</option><option value="7">Up to ₹7 Cr</option><option value="100">₹7 Cr +</option></select></div>
-        <div class="field"><label>Sort by</label><select id="fSort"><option value="">Featured</option><option value="price-asc">Price: Low → High</option><option value="price-desc">Price: High → Low</option><option value="poss">Possession: Soonest</option><option value="name">Name: A → Z</option></select></div>
+        <div class="field"><label>Budget from</label><select id="fBudgetMin"><option value="">Any</option><option value="2">₹2 Cr</option><option value="3">₹3 Cr</option><option value="4">₹4 Cr</option><option value="5">₹5 Cr</option><option value="7">₹7 Cr</option></select></div>
+        <div class="field"><label>Budget to</label><select id="fBudgetMax"><option value="">Any</option><option value="3">₹3 Cr</option><option value="4">₹4 Cr</option><option value="5">₹5 Cr</option><option value="7">₹7 Cr</option><option value="10">₹10 Cr</option><option value="100">₹10 Cr +</option></select></div>
       </div>
       <div class="search-actions"><button class="btn btn-gold" id="btnSearch">Search</button><button class="btn btn-outline" id="btnReset">Reset</button><span class="muted" id="resultCount" style="font-size:.88rem;"></span></div>
     </div>
@@ -99,85 +98,17 @@
 
 <section class="section tint" id="services">
   <div class="container">
-    <div class="section-head"><span class="eyebrow">Services</span><h2>Your Relationship Manager, (shortlist to handover)</h2></div>
-    <div class="services-grid">
-      <div class="svc-list reveal">
-        <div class="svc"><h4><span class="n">01</span> Curated Advisory</h4><p>I shortlist only the BPTP units that genuinely fit your goal — with honest pros, cons and numbers, never a scripted hard sell.</p></div>
-        <div class="svc"><h4><span class="n">02</span> Investment &amp; ROI</h4><p>CFO-style projections on appreciation, rental yield and holding period, so you can weigh every option like an investor.</p></div>
-        <div class="svc"><h4><span class="n">03</span> Channel Partner Desk</h4><p>Clean inventory, fast responses and fair dealing for my 300+ partners — curated, best-fit options for their customers.</p></div>
-        <div class="svc"><h4><span class="n">04</span> End-to-end Closing</h4><p>Paperwork, negotiation, financing and possession handled across time zones — one team accountable to move-in.</p></div>
-      </div>
-      <div class="svc-visual reveal d2">
-        <div class="sv-card">
-          <div class="sv-h"><span class="sv-dot"></span> Curated shortlist</div>
-          <div class="sv-rows">
-            <div class="sv-scan"></div>
-            <div class="sv-row"><span></span><b style="width:66%"></b></div>
-            <div class="sv-row pick"><span></span><b style="width:52%"></b></div>
-            <div class="sv-row"><span></span><b style="width:72%"></b></div>
-            <div class="sv-row"><span></span><b style="width:44%"></b></div>
-          </div>
-        </div>
-        <div class="sv-card sv-auto">
-          <div class="sv-h"><span class="sv-dot sv-live"></span> Automated ROI engine · Live</div>
-          <div class="sv-auto-row">
-            <div class="sv-gears" aria-hidden="true">
-              <svg viewBox="0 0 92 76" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <g class="gear gear-a">
-                  <g fill="#c6cdd7">
-                    <rect x="26" y="12" width="8" height="10" rx="2"/>
-                    <rect x="26" y="12" width="8" height="10" rx="2" transform="rotate(45 30 40)"/>
-                    <rect x="26" y="12" width="8" height="10" rx="2" transform="rotate(90 30 40)"/>
-                    <rect x="26" y="12" width="8" height="10" rx="2" transform="rotate(135 30 40)"/>
-                    <rect x="26" y="12" width="8" height="10" rx="2" transform="rotate(180 30 40)"/>
-                    <rect x="26" y="12" width="8" height="10" rx="2" transform="rotate(225 30 40)"/>
-                    <rect x="26" y="12" width="8" height="10" rx="2" transform="rotate(270 30 40)"/>
-                    <rect x="26" y="12" width="8" height="10" rx="2" transform="rotate(315 30 40)"/>
-                  </g>
-                  <circle cx="30" cy="40" r="20" fill="#d8dee6"/><circle cx="30" cy="40" r="11" fill="#fff"/><circle cx="30" cy="40" r="6" fill="#c6cdd7"/>
-                </g>
-                <g class="gear gear-b">
-                  <g fill="#c6cdd7">
-                    <rect x="62" y="33" width="8" height="9" rx="2"/>
-                    <rect x="62" y="33" width="8" height="9" rx="2" transform="rotate(60 66 54)"/>
-                    <rect x="62" y="33" width="8" height="9" rx="2" transform="rotate(120 66 54)"/>
-                    <rect x="62" y="33" width="8" height="9" rx="2" transform="rotate(180 66 54)"/>
-                    <rect x="62" y="33" width="8" height="9" rx="2" transform="rotate(240 66 54)"/>
-                    <rect x="62" y="33" width="8" height="9" rx="2" transform="rotate(300 66 54)"/>
-                  </g>
-                  <circle cx="66" cy="54" r="14" fill="#d8dee6"/><circle cx="66" cy="54" r="7" fill="#fff"/><circle cx="66" cy="54" r="4" fill="#c6cdd7"/>
-                </g>
-              </svg>
-            </div>
-            <div class="sv-quote"><b id="mkPrice">+0.00%</b><small>live projection</small></div>
-          </div>
-          <div class="sv-ticker">
-            <svg id="mkChart" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs><linearGradient id="mkgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fbfe6" stop-opacity=".55"/><stop offset="1" stop-color="#9fbfe6" stop-opacity="0"/></linearGradient></defs>
-              <polygon class="mk-area" points=""/>
-              <polyline class="mk-line" points=""/>
-            </svg>
-            <span class="mk-dot" id="mkDot"></span>
-          </div>
-        </div>
-      </div>
+    <div class="section-head"><span class="eyebrow">Services</span><h2>Your relationship manager — shortlist to handover</h2></div>
+    <div class="creds">
+      <div class="cred reveal"><span class="ico">🎯</span><h4>Curated Advisory</h4><p>Only the BPTP units that genuinely fit your goal — with honest pros, cons and numbers, never a scripted hard sell.</p></div>
+      <div class="cred reveal d1"><span class="ico">📈</span><h4>Investment &amp; ROI</h4><p>CFO-style projections on appreciation, rental yield and holding period, so you weigh every option like an investor.</p></div>
+      <div class="cred reveal d2"><span class="ico">🤝</span><h4>Channel Partner Desk</h4><p>Clean inventory, fast responses and fair dealing for my 300+ partners — best-fit options for their customers.</p></div>
+      <div class="cred reveal d3"><span class="ico">🔑</span><h4>End-to-end Closing</h4><p>Paperwork, negotiation, financing and possession handled across time zones — one team accountable to move-in.</p></div>
     </div>
   </div>
 </section>
 
-<section class="section" id="process">
-  <div class="container">
-    <div class="section-head"><span class="eyebrow">My Process</span><h2>What working with me looks like</h2></div>
-    <div class="process">
-      <div class="step reveal"><span class="no">01</span><h3>Understand</h3><p>We start with your goal — end-use or investment, budget, timeline and appetite for risk.</p></div>
-      <div class="step reveal d1"><span class="no">02</span><h3>Curate</h3><p>I shortlist only the BPTP units that genuinely fit — with best Advisory.</p></div>
-      <div class="step reveal d2"><span class="no">03</span><h3>Verify</h3><p>Live inventory, real pricing and CFO-style ROI projections, unlocked with a quick OTP.</p></div>
-      <div class="step reveal d3"><span class="no">04</span><h3>Close</h3><p>Planning, Process and possession handled end-to-end — across time zones if needed.</p></div>
-    </div>
-  </div>
-</section>
-
-<section class="section tint" id="why">
+<section class="section" id="why">
   <div class="container">
     <div class="section-head center" style="margin-left:auto;margin-right:auto">
       <span class="eyebrow">Why Coffee &amp; Deals</span>
@@ -189,7 +120,7 @@
       <div class="cred reveal d1"><span class="ico">🧭</span><h4>Simple, by Design</h4><p>Structured, honest, easy to follow. No jargon, no runaround — just clear next steps.</p></div>
       <div class="cred reveal d2"><span class="ico">🤝</span><h4>One Insider Advisor</h4><p>The same trusted person from first conversation to final keys, guarding your interests throughout.</p></div>
     </div>
-    <p class="why-note reveal">A note on what this is — Coffee &amp; Deals is a personal planning and support platform by Ashish Sharma, made to serve clients and channel partners with greater ease. It is not a property brokerage, nor an official website of BPTP Ltd — simply a shared, well-organised workspace, so we can work together, beautifully.</p>
+    <p class="why-note reveal">A note on what this is — Coffee &amp; Deals is not a legal entity, a brokerage or an agency, and it is not an official website of BPTP Ltd. It is a personal invitation: to discuss your next home the way the most important decisions are truly made — unhurried and honest, over a cup of coffee.<br><br>Think of it as a personal desk I have built for my associates and premium buyers — a calm, well-organised space to plan and execute their choices with clarity. In my experience, a hundred-rupee coffee often shapes a multi-crore property decision far better than any hard sell ever could. So whether you are across the city or sitting abroad with a coffee in hand, this is simply where a serious, one-to-one conversation about your home can begin.</p>
   </div>
 </section>
 
@@ -289,6 +220,6 @@
 <script src="js/firebase-config.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/data.js"></script>
-<script src="js/main.js"></script>
+<script src="js/main.js?v=2"></script>
 </body>
 </html>

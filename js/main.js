@@ -70,7 +70,7 @@
     document.getElementById("btnSearch").addEventListener("click", applyFilters);
     document.getElementById("btnReset").addEventListener("click", resetFilters);
     document.getElementById("clearLink").addEventListener("click", (e) => { e.preventDefault(); resetFilters(); });
-    ["fCategory", "fType", "fBudget", "fLocation", "fProject", "fSort"].forEach(id => document.getElementById(id).addEventListener("change", applyFilters));
+    ["fCategory", "fType", "fBudgetMin", "fBudgetMax", "fLocation", "fProject"].forEach(id => { const el = document.getElementById(id); if (el) el.addEventListener("change", applyFilters); });
   }
   function sortProjects(list, mode) {
     if (!mode) return list;
@@ -83,14 +83,16 @@
     return arr;
   }
   function applyFilters() {
-    const loc = val("fLocation"), proj = val("fProject"), cat = val("fCategory"), type = val("fType"), budget = parseFloat(val("fBudget")) || Infinity, sort = val("fSort");
-    let filtered = ALL_PROJECTS.filter(p => (!loc || shortLoc(p.location) === loc) && (!proj || p.id === proj) && (!cat || p.category === cat) && (!type || p.type === type) && ((p.priceFromCr || 0) <= budget));
-    filtered = sortProjects(filtered, sort);
-    renderProjects(filtered, !!sort);
+    const loc = val("fLocation"), proj = val("fProject"), cat = val("fCategory"), type = val("fType");
+    const bMin = parseFloat(val("fBudgetMin")) || 0, bMax = parseFloat(val("fBudgetMax")) || Infinity;
+    const lo = Math.min(bMin, bMax), hi = Math.max(bMin, bMax);   // tolerate reversed picks
+    let filtered = ALL_PROJECTS.filter(p => (!loc || shortLoc(p.location) === loc) && (!proj || p.id === proj) && (!cat || p.category === cat) && (!type || p.type === type) && ((p.priceFromCr || 0) >= lo) && ((p.priceFromCr || 0) <= hi));
+    const anyFilter = !!(loc || proj || cat || type || bMin || (bMax !== Infinity && val("fBudgetMax")));
+    renderProjects(filtered, anyFilter);
     document.getElementById("resultCount").textContent = `${filtered.length} of ${ALL_PROJECTS.length} projects`;
   }
   function resetFilters() {
-    ["fLocation", "fProject", "fCategory", "fType", "fBudget", "fSort"].forEach(id => document.getElementById(id).value = "");
+    ["fLocation", "fProject", "fCategory", "fType", "fBudgetMin", "fBudgetMax"].forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
     document.getElementById("resultCount").textContent = ""; renderProjects(ALL_PROJECTS);
   }
   const val = (id) => document.getElementById(id).value;
