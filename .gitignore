@@ -13,3 +13,8 @@ test-*.js
 # Logs
 *.log
 npm-debug.log*
+
+# Firebase local deploy cache (machine-only, regenerated on every deploy)
+.firebase/
+.firebase/hosting.*.cache
+firebase-debug.log*
