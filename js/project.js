@@ -190,17 +190,22 @@
   function myEnqKey(mobile) { return "cnd_enq_" + (mobile || "").toString().replace(/\D/g, "").slice(-10); }
   function getMyEnq(mobile) { try { return JSON.parse(localStorage.getItem(myEnqKey(mobile)) || "null"); } catch (e) { return null; } }
   function saveMyEnq(rec) { try { localStorage.setItem(myEnqKey(rec.mobile), JSON.stringify(rec)); } catch (e) {} }
-  async function upsertEnquiry(name, mobile, project, unit, agent) {
+  async function upsertEnquiry(name, mobile, project, unit, agent, status) {
     const now = Date.now();
     const isUnit = unit && unit !== "(inventory view)";
     const agentObj = agent && agent.isAgent ? { isAgent: true, firm: agent.firm || "", designation: agent.designation || "" } : null;
     let rec = getMyEnq(mobile);
-    if (!rec) rec = { user: name, mobile, code: genCode(), status: "Open", createdTs: now, ts: now, interests: [] };
+    if (!rec) rec = { user: name, mobile, code: genCode(), status: status || "Open", createdTs: now, ts: now, interests: [] };
     if (agentObj) rec.agent = agentObj;
     if (name) rec.user = name;
     if (!rec.code) rec.code = genCode();
     if (!rec.createdTs) rec.createdTs = rec.ts || now;
-    rec.ts = now; rec.status = rec.status || "Open";
+    rec.ts = now;
+    // Verification state: "Unverified" (details submitted) → "Verified" (OTP passed).
+    // Never downgrade a record that's already Verified.
+    if (status === "Unverified") { if (rec.status !== "Verified") rec.status = "Unverified"; }
+    else if (status) rec.status = status;
+    else rec.status = rec.status || "Open";
     if (!Array.isArray(rec.interests)) rec.interests = [];
     addInterest(rec, project, isUnit ? unit : null, now);
     saveMyEnq(rec);
@@ -245,6 +250,9 @@
     pendingAgent = isAgent ? { isAgent: true, firm, designation: desig } : null;
     verifiedName = name; verifiedMobile = mobile;
     document.getElementById("maskedNum").textContent = maskNum(mobile);
+    // Capture the lead the MOMENT details are submitted — even before OTP — so no
+    // enquiry is ever lost if SMS fails or the visitor drops off. Marked "Unverified".
+    try { await upsertEnquiry(name, mobile, PROJECT.name, "(inventory view)", pendingAgent, "Unverified"); } catch (e) {}
     otpFallback = false;
     if (cfg.otpMode === "firebase") {
       try {
@@ -289,7 +297,7 @@
     if (cfg.otpMode === "firebase" && !otpFallback) { try { await confirmationResult.confirm(code); ok = true; } catch (e) { ok = false; } } else { ok = (code === demoCode); }
     if (!ok) { toast("Incorrect OTP. Please try again.", "err"); return; }
     saveSession(verifiedName, verifiedMobile, pendingAgent);
-    await upsertEnquiry(verifiedName, verifiedMobile, PROJECT.name, "(inventory view)", pendingAgent);
+    await upsertEnquiry(verifiedName, verifiedMobile, PROJECT.name, "(inventory view)", pendingAgent, "Verified");
     document.getElementById("otpModal").classList.remove("open");
     toast("Verified ☕ Opening live inventory…", "ok"); await showInventory();
   }

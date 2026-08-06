@@ -61,6 +61,11 @@ function brokerById(id) { return DB.brokers.find((x) => x.id === id); }
    ones into leads. Each imported lead remembers its `web_src` id so it is
    never imported twice, even across reloads or devices. */
 async function importWebEnquiries() {
+  // DISABLED BY DESIGN: website enquiries must NOT auto-appear in the Enquiry panel.
+  // They live only in the Digital Enquiry view until you explicitly transfer one
+  // (see transferEnquiry / transferAllNew), which is when a real lead is created.
+  return;
+  /* eslint-disable no-unreachable */
   if (!CLOUD || typeof CLOUD.loadEnquiries !== "function") return;
   let webs = [];
   try { webs = await CLOUD.loadEnquiries(); } catch (e) { return; }
@@ -2674,7 +2679,7 @@ async function populateDigital() {
     return `<tr${fresh ? ' style="background:#fff7ed"' : ""}>
       <td><input type="checkbox" class="bulk" data-id="${esc(String(e.id))}"></td>
       <td class="mono nowrap"><b>${esc(e.code || "—")}</b></td>
-      <td>${esc(e.user) || "—"}${agent}</td>
+      <td>${esc(e.user) || "—"}${e.status === "Unverified" ? ` <span class="digi-unverified">⚠ Unverified</span>` : (e.status === "Verified" ? ` <span class="digi-verified">✓ Verified</span>` : "")}${agent}</td>
       <td class="nowrap">${telLink(e.mobile)}</td>
       <td style="max-width:300px">${webInterestSummary(e)}</td>
       <td class="nowrap fu-meta">${fmtDT(e.ts)}</td>
@@ -2774,15 +2779,28 @@ function reqTypeOf(name) {
   if (/floor/i.test(t)) return "Floor";
   return t ? "Other" : "";
 }
-function enquiryToLead(e) {
+function enquiryToLead(e, invUnits) {
   const its = webInterests(e);
   const projects = uniqList(its.map((i) => i.project).filter(Boolean));
   const isAgent = !!(e.agent && e.agent.isAgent);
   const created = e.createdTs ? new Date(e.createdTs) : (e.ts ? new Date(e.ts) : new Date());
-  // Requirement analysis: what kind of project(s) the customer asked about.
+  // Requirement = the kind of home they looked at (Plot / Floor / H-rise / Other).
+  // The enquiry form's Requirement is a single choice, so use the primary type.
   const types = uniqList(projects.map(reqTypeOf).filter(Boolean));
-  const requirement = types.join(", ");
-  // Units the visitor looked at, per project.
+  const requirement = types[0] || "";
+  // Units the visitor looked at, per project → prefill unit no(s) + costing from inventory.
+  const units = {}, costing = {};
+  const inv = invUnits || _mfUnits || [];
+  its.forEach((i) => {
+    if (!i.project) return;
+    if (i.units && i.units.length) {
+      units[i.project] = i.units.join(", ");
+      // Costing: if a single unit is known, pull its ₹ (Cr) from live inventory.
+      const first = i.units[0];
+      const u = inv.find((x) => (x.project || "").toLowerCase() === i.project.toLowerCase() && String(x.unitNo).toLowerCase() === String(first).toLowerCase());
+      if (u && u.costingCr) costing[i.project] = u.costingCr + " Cr";
+    }
+  });
   const unitsStr = its.filter((i) => i.units && i.units.length).map((i) => `${i.project} (${i.units.join(", ")})`).join("; ");
   const remark = [
     "From Digital Enquiry " + (e.code || ""),
@@ -2793,31 +2811,43 @@ function enquiryToLead(e) {
   return {
     lead_number: "DIGI-" + (e.code || String(e.id)),
     customer_name: e.user || "", customer_mobile: e.mobile || "",
-    enquiry_type: isAgent ? "CP+CL" : "CL",          // matches what was captured on the site
+    enquiry_type: isAgent ? "CP+CL" : "CL",          // customer capture → CL
     source_type: isAgent ? "CP" : "CL",              // CP (channel partner) or CL (direct client)
     source_name: isAgent ? (e.agent.firm || "") : "",
     source_firm: isAgent ? (e.agent.firm || "") : "",
     requirement, budget: "", stage: "Call", status: "Active", rating: "Warm",
-    projects_shared: projects,
+    projects_shared: projects, units, costing,
     remark,
     lead_date: isNaN(created) ? today() : created.toISOString().slice(0, 10),
     web_src: e.id,
     web_synced_ts: e.ts || Date.now()      // last website activity captured at transfer
   };
 }
-// Transfer opens a PRE-FILLED New Enquiry so you can review and save.
-function transferEnquiry(webId) {
+// Ensure a customer record exists for a transferred lead (matched by mobile or name).
+function ensureCustomerFromLead(lead) {
+  const name = (lead.customer_name || "").trim(); if (!name) return;
+  const digits = (lead.customer_mobile || "").replace(/\D/g, "");
+  const exists = DB.customers.some((c) => (c.name || "").trim().toLowerCase() === name.toLowerCase()
+    || (digits && [c.mobile1, c.mobile2, c.mobile3].some((m) => m && String(m).replace(/\D/g, "") === digits)));
+  if (!exists) upsert("customers", { name, mobile1: lead.customer_mobile || "", category: "EndUser", contact_future: 1 });
+}
+// Transfer opens a PRE-FILLED New Enquiry so you can review and save. We load live
+// inventory first so unit no(s) and costing prefill correctly.
+async function transferEnquiry(webId) {
   const e = _webEnq.find((x) => String(x.id) === String(webId)); if (!e) return toast("Enquiry not found");
   if (DB.leads.some((l) => l.web_src === e.id)) return toast("Already in CRM");
-  openLeadForm(enquiryToLead(e));
+  let inv = _mfUnits; const S = WS();
+  if ((!inv || !inv.length) && S) { try { inv = await S.inventory(); _mfUnits = inv; _mfUnitsLoaded = true; } catch (x) { inv = []; } }
+  openLeadForm(enquiryToLead(e, inv));   // saving the form also creates the customer record
 }
-function transferAllNew() {
+async function transferAllNew() {
   const inCrm = new Set(DB.leads.map((l) => l.web_src).filter(Boolean));
   const fresh = _webEnq.filter((e) => !inCrm.has(e.id) && !e.transferred);
   if (!fresh.length) return toast("No new enquiries to transfer");
   if (!confirm("Transfer " + fresh.length + " new website enquiry(s) into CRM Enquiries?")) return;
   const S = WS();
-  fresh.forEach((e) => { upsert("leads", enquiryToLead(e)); if (S) { try { S.updateEnquiry(e.id, { transferred: true, transferredTs: Date.now() }); } catch (x) {} } });
+  let inv = _mfUnits; if ((!inv || !inv.length) && S) { try { inv = await S.inventory(); _mfUnits = inv; _mfUnitsLoaded = true; } catch (x) { inv = []; } }
+  fresh.forEach((e) => { const lead = enquiryToLead(e, inv); upsert("leads", lead); ensureCustomerFromLead(lead); if (S) { try { S.updateEnquiry(e.id, { transferred: true, transferredTs: Date.now() }); } catch (x) {} } });
   toast(fresh.length + " transferred to CRM"); populateDigital();
 }
 function exportDigitalCSV() {
