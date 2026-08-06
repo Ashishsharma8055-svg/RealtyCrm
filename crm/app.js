@@ -1061,13 +1061,13 @@ async function loadLeadFormUnits() {
   dls.forEach((dl) => {
     const np = (dl.getAttribute("data-uproj") || "").toLowerCase();
     const opts = units.filter((u) => { const up = (u.project || "").toLowerCase(); return up && (up === np || up.includes(np) || np.includes(up)); })
-      .map((u) => `<option value="${esc(u.unitNo)}">${esc([u.size, u.status, u.costingCr ? u.costingCr + " Cr" : ""].filter(Boolean).join(" · "))}</option>`).join("");
+      .map((u) => `<option value="${esc(u.unitNo)}">${esc([u.size, u.status, u.costingCr ? crLabel(u.costingCr) : ""].filter(Boolean).join(" · "))}</option>`).join("");
     dl.innerHTML = opts;
   });
 }
 // Map a unit's costing (in Cr) to the matching budget band.
 function crToBudgetBand(cr) {
-  const n = Number(cr); if (!n) return "";
+  const n = toCr(cr); if (!n) return "";
   if (n < 2) return "Below 2 Cr";
   if (n < 2.5) return "2-2.5 Cr";
   if (n < 3) return "2.5-3 Cr";
@@ -2611,7 +2611,11 @@ function WS() { return (typeof window !== "undefined" && window.Store) ? window.
 /* ---- formatters ---- */
 function fmtDT(ts) { if (!ts) return "—"; try { return new Date(ts).toLocaleString(undefined, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); } catch (e) { return "—"; } }
 function inrGroup(n) { n = Number(n); if (!n || isNaN(n)) return ""; const s = Math.round(n).toString(); const last3 = s.slice(-3), rest = s.slice(0, -3); return (rest ? rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + "," : "") + last3; }
-function crLabel(v) { v = Number(v); if (!v || isNaN(v)) return "—"; return "₹" + (Number.isInteger(v) ? v : v.toFixed(2).replace(/\.?0+$/, "")) + " Cr"; }
+// Normalise a costing value to Crores. Values are stored either already in Cr (e.g. 8.58)
+// or as a full rupee amount (e.g. 85800000). Anything >= 1000 is clearly rupees (no unit
+// costs 1000+ Cr), so convert it: 1 Cr = 10,000,000.
+function toCr(v) { v = Number(v); if (!v || isNaN(v)) return 0; return v >= 1000 ? v / 1e7 : v; }
+function crLabel(v) { const cr = toCr(v); if (!cr) return "—"; return "₹" + (Number.isInteger(cr) ? cr : Number(cr.toFixed(2))) + " Cr"; }
 
 /* ---- website enquiry helpers (mirror admin.html) ---- */
 function webInterests(e) { let its = e.interests; if (!its || !its.length) { if (e.project) return [{ project: e.project, units: (e.unit && e.unit !== "(inventory view)") ? [e.unit] : [], lastTs: e.ts }]; return []; } return its; }
@@ -2801,7 +2805,7 @@ function enquiryToLead(e, invUnits) {
       // Costing: if a single unit is known, pull its ₹ (Cr) from live inventory.
       const first = i.units[0];
       const u = inv.find((x) => (x.project || "").toLowerCase() === i.project.toLowerCase() && String(x.unitNo).toLowerCase() === String(first).toLowerCase());
-      if (u && u.costingCr) costing[i.project] = u.costingCr + " Cr";
+      if (u && u.costingCr) costing[i.project] = toCr(u.costingCr) + " Cr";
     }
   });
   const unitsStr = its.filter((i) => i.units && i.units.length).map((i) => `${i.project} (${i.units.join(", ")})`).join("; ");
@@ -3139,7 +3143,7 @@ function openUnitForm(existing) {
       ${field("Size", "u_size", u.size)}
       ${field("Status", "u_status", u.status, "", UNIT_STATUS)}
       ${field("BSP (₹ / sq.ft)", "u_bsp", u.bsp, "number")}
-      ${field("Costing (₹ Cr)", "u_cost", u.costingCr, "number")}
+      ${field("Costing (in ₹ Cr, e.g. 8.58)", "u_cost", toCr(u.costingCr) || "", "number")}
       ${field("Unit description", "u_desc", u.desc, "textarea")}
     </div></div></div></div>
     <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="saveUnit">Save Unit</button></div>`, true);
