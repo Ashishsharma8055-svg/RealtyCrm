@@ -832,13 +832,16 @@ function rowToBroker(row) {
 function brokerImport() {
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls,.csv";
   inp.onchange = () => {
-    const f = inp.files[0]; if (!f) return; const r = new FileReader(); const isCsv = /\.csv$/i.test(f.name);
+    const f = inp.files[0]; if (!f) return; const isCsv = /\.csv$/i.test(f.name);
+    if (!isCsv && typeof XLSX === "undefined") { toast("Spreadsheet engine still loading — wait a second and try again."); return; }
+    const r = new FileReader();
+    r.onerror = () => toast("Could not read that file — please try again.");
     r.onload = (ev) => {
       try {
         let rows = [];
-        if (!isCsv && typeof XLSX !== "undefined") { const wb = XLSX.read(ev.target.result, { type: "binary" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); }
-        else rows = parseCSV(typeof ev.target.result === "string" ? ev.target.result : new TextDecoder().decode(ev.target.result));
-        if (!rows.length) return toast("Sheet appears empty");
+        if (!isCsv) { const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" }); rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" }); }
+        else rows = parseCSV(String(ev.target.result));
+        if (!rows.length) return toast("That sheet has no data rows. Use the Template format.");
         const news = [], dups = [];
         rows.forEach((row) => {
           const rec = rowToBroker(row); if (!rec) return;
@@ -849,9 +852,9 @@ function brokerImport() {
         news.forEach((r) => upsert("brokers", r));       // new brokers added straight away
         if (dups.length) openBrokerDupReview(dups, news.length);
         else { toast(news.length ? `Imported ${news.length} new broker(s)` : "No new brokers to import"); brokerRowsHtml(); }
-      } catch (e) { toast("Could not read file. Use the Template format."); }
+      } catch (e) { console.error("Broker import failed:", e); toast("Import failed: " + ((e && e.message) || String(e)) + " — use the Template format."); }
     };
-    if (isCsv || typeof XLSX === "undefined") r.readAsText(f); else r.readAsBinaryString(f);
+    if (isCsv) r.readAsText(f); else r.readAsArrayBuffer(f);
   };
   inp.click();
 }
@@ -2929,23 +2932,34 @@ function sheetImport(target, after) {
   const S = WS(); if (!S) return toast("Website data layer not loaded");
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".xlsx,.xls,.csv";
   inp.onchange = () => {
-    const f = inp.files[0]; if (!f) return; const r = new FileReader(); const isCsv = /\.csv$/i.test(f.name);
+    const f = inp.files[0]; if (!f) return;
+    const isCsv = /\.csv$/i.test(f.name);
+    if (!isCsv && typeof XLSX === "undefined") { toast("Spreadsheet engine still loading — wait a second and try Import again."); return; }
+    const r = new FileReader();
+    r.onerror = () => toast("Could not read that file — please try again.");
     r.onload = async (ev) => {
       try {
         let rows = [];
-        if (!isCsv && typeof XLSX !== "undefined") {
-          const wb = XLSX.read(ev.target.result, { type: "binary" }); const ws = wb.Sheets[wb.SheetNames[0]];
+        if (!isCsv) {
+          // Robust binary read via ArrayBuffer (readAsBinaryString is deprecated and
+          // fails on some browsers — this is the reliable path for .xlsx/.xls).
+          const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
+          const ws = wb.Sheets[wb.SheetNames[0]];
           rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
         } else {
-          rows = parseCSV(typeof ev.target.result === "string" ? ev.target.result : new TextDecoder().decode(ev.target.result));
+          rows = parseCSV(String(ev.target.result));
         }
-        if (!rows.length) return toast("Sheet appears empty");
+        if (!rows.length) { toast("That sheet has no data rows. Download the Template and fill it in."); return; }
         const rep = target === "projects" ? await S.bulkUpsertProjects(rows) : await S.bulkUpsertInventory(rows);
-        toast(`Imported: ${rep.added} new · ${rep.merged} merged · ${rep.skipped} skipped`);
+        if (rep.added === 0 && rep.merged === 0) {
+          toast("Nothing imported — column headers don't match. Use the Template (Project Name, Unit No, Size, Status, Costing…).");
+        } else {
+          toast(`Imported: ${rep.added} new · ${rep.merged} merged · ${rep.skipped} skipped`);
+        }
         if (after) after();
-      } catch (e) { toast("Could not read file. Use the Template format."); }
+      } catch (e) { console.error("Import failed:", e); toast("Import failed: " + ((e && e.message) || String(e)) + " — check the Template format."); }
     };
-    if (isCsv || typeof XLSX === "undefined") r.readAsText(f); else r.readAsBinaryString(f);
+    if (isCsv) r.readAsText(f); else r.readAsArrayBuffer(f);
   };
   inp.click();
 }

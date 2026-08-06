@@ -234,7 +234,23 @@
     boxes.forEach((b, i) => { b.addEventListener("input", () => { b.value = b.value.replace(/\D/g, ""); if (b.value && i < 5) boxes[i + 1].focus(); }); b.addEventListener("keydown", (e) => { if (e.key === "Backspace" && !b.value && i > 0) boxes[i - 1].focus(); }); });
   }
   function resetOtp() { otpFallback = false; document.getElementById("otpStep1").style.display = "block"; document.getElementById("otpStep2").style.display = "none"; document.querySelectorAll("#otpInputs input").forEach(b => b.value = ""); document.getElementById("demoHint").style.display = "none"; const dh2 = document.getElementById("demoHint2"); if (dh2) dh2.style.display = "none"; const noRadio = document.querySelector('#otpStep1 input[name="isAgent"][value="no"]'); if (noRadio) noRadio.checked = true; const af = document.getElementById("agentFields"); if (af) af.style.display = "none"; }
+  let _otpSending = false;
+  // Put the Send button into a disabled "Processing…" state with a spinner, so a
+  // second tap can't fire another OTP while the first request is in flight.
+  function setSendBtn(loading) {
+    const b = document.getElementById("oSend"); if (!b) return;
+    if (loading) { if (!b.dataset._label) b.dataset._label = b.textContent; b.disabled = true; b.classList.add("is-loading"); b.textContent = "Processing…"; }
+    else { b.disabled = false; b.classList.remove("is-loading"); if (b.dataset._label) b.textContent = b.dataset._label; }
+  }
+  // Big centred confirmation flash ("OTP sent").
+  function centerFlash(msg, sub) {
+    let el = document.getElementById("otpFlash");
+    if (!el) { el = document.createElement("div"); el.id = "otpFlash"; el.className = "otp-flash"; document.body.appendChild(el); }
+    el.innerHTML = `<div class="otp-flash-card"><div class="otp-flash-ic">✓</div><div class="otp-flash-msg">${msg}</div>${sub ? `<div class="otp-flash-sub">${sub}</div>` : ""}</div>`;
+    el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 2800);
+  }
   async function sendOtp() {
+    if (_otpSending) return;   // guard against double-submit / OTP spamming
     const name = document.getElementById("oName").value.trim();
     // Country code (editable, default +91) + local number.
     let cc = (document.getElementById("oCC").value || "+91").trim().replace(/[^\d+]/g, "");
@@ -250,31 +266,34 @@
     pendingAgent = isAgent ? { isAgent: true, firm, designation: desig } : null;
     verifiedName = name; verifiedMobile = mobile;
     document.getElementById("maskedNum").textContent = maskNum(mobile);
-    // Capture the lead the MOMENT details are submitted — even before OTP — so no
-    // enquiry is ever lost if SMS fails or the visitor drops off. Marked "Unverified".
-    try { await upsertEnquiry(name, mobile, PROJECT.name, "(inventory view)", pendingAgent, "Unverified"); } catch (e) {}
-    otpFallback = false;
-    if (cfg.otpMode === "firebase") {
-      try {
-        const fb = await Store.firebase.ensure();
-        if (!window._recaptcha) window._recaptcha = new fb.authM.RecaptchaVerifier(fb.auth, "recaptcha-container", { size: "invisible" });
-        const e164 = cc + localNum;                     // E.164, e.g. "+919873133190"
-        confirmationResult = await fb.authM.signInWithPhoneNumber(fb.auth, e164, window._recaptcha);
-        gotoStep2(); toast("OTP sent via SMS.", "ok");
-      } catch (err) {
-        console.error("OTP send failed:", err);
-        // Safety net: if the real SMS can't be sent (Firebase setup still
-        // settling, quota, etc.), don't block the visitor — show the code
-        // on-screen, clearly labelled, so lead capture keeps working.
-        showFallbackCode((err && err.code) || "sms_unavailable");
+    _otpSending = true; setSendBtn(true);   // lock the button while we send
+    try {
+      // Capture the lead the MOMENT details are submitted — even before OTP — so no
+      // enquiry is ever lost if SMS fails or the visitor drops off. Marked "Unverified".
+      try { await upsertEnquiry(name, mobile, PROJECT.name, "(inventory view)", pendingAgent, "Unverified"); } catch (e) {}
+      otpFallback = false;
+      if (cfg.otpMode === "firebase") {
+        try {
+          const fb = await Store.firebase.ensure();
+          if (!window._recaptcha) window._recaptcha = new fb.authM.RecaptchaVerifier(fb.auth, "recaptcha-container", { size: "invisible" });
+          const e164 = cc + localNum;                     // E.164, e.g. "+919873133190"
+          confirmationResult = await fb.authM.signInWithPhoneNumber(fb.auth, e164, window._recaptcha);
+          gotoStep2(); centerFlash("OTP sent", "A 6-digit code is on its way to your phone.");
+        } catch (err) {
+          console.error("OTP send failed:", err);
+          // Safety net: if the real SMS can't be sent (Firebase setup still
+          // settling, quota, etc.), don't block the visitor — show the code
+          // on-screen, clearly labelled, so lead capture keeps working.
+          showFallbackCode((err && err.code) || "sms_unavailable");
+        }
+      } else {
+        demoCode = cfg.demoOtpFixed || String(Math.floor(100000 + Math.random() * 900000));
+        console.log("%c[DEMO OTP] " + demoCode, "color:#5b8fc9;font-weight:bold");
+        const dh2 = document.getElementById("demoHint2"); dh2.style.display = "block";
+        dh2.innerHTML = `Your verification code is <b style="font-size:1.15rem">${demoCode}</b>. Enter it below to view live inventory.`;
+        gotoStep2(); centerFlash("Code ready", "Enter the code shown to continue.");
       }
-    } else {
-      demoCode = cfg.demoOtpFixed || String(Math.floor(100000 + Math.random() * 900000));
-      console.log("%c[DEMO OTP] " + demoCode, "color:#5b8fc9;font-weight:bold");
-      const dh2 = document.getElementById("demoHint2"); dh2.style.display = "block";
-      dh2.innerHTML = `Your verification code is <b style="font-size:1.15rem">${demoCode}</b>. Enter it below to view live inventory.`;
-      gotoStep2();
-    }
+    } finally { _otpSending = false; setSendBtn(false); }
   }
   // Explicit on-screen fallback when SMS delivery fails.
   function showFallbackCode(reason) {

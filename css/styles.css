@@ -311,6 +311,24 @@ p { margin:0 0 1rem; }
 /* "Why Coffee & Deals" honest note */
 .why-note { max-width:50rem; margin:2.8rem auto 0; text-align:center; font-size:.9rem; line-height:1.7; color:var(--gray);
   border-top:1px solid var(--line); padding-top:1.6rem; font-style:italic; }
+
+/* OTP send button — processing state with spinner */
+.btn.is-loading { position:relative; opacity:.85; cursor:progress; pointer-events:none; padding-left:2.6rem; }
+.btn.is-loading::before { content:""; position:absolute; left:1.1rem; top:50%; width:1.05em; height:1.05em; margin-top:-.525em;
+  border:2.5px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:otpspin .7s linear infinite; }
+@keyframes otpspin { to { transform:rotate(360deg); } }
+
+/* Centred "OTP sent" confirmation flash */
+.otp-flash { position:fixed; inset:0; z-index:10000; display:flex; align-items:center; justify-content:center; pointer-events:none;
+  opacity:0; transition:opacity .2s ease; }
+.otp-flash.show { opacity:1; }
+.otp-flash-card { background:rgba(15,15,14,.94); color:#fff; border-radius:18px; padding:2rem 2.6rem; text-align:center;
+  box-shadow:0 24px 60px rgba(0,0,0,.4); transform:scale(.9); transition:transform .22s cubic-bezier(.2,.9,.3,1.2); max-width:88vw; }
+.otp-flash.show .otp-flash-card { transform:scale(1); }
+.otp-flash-ic { width:56px; height:56px; margin:0 auto .9rem; border-radius:50%; background:#0d9488; color:#fff;
+  display:flex; align-items:center; justify-content:center; font-size:1.9rem; font-weight:700; }
+.otp-flash-msg { font-size:1.35rem; font-weight:700; letter-spacing:-.01em; }
+.otp-flash-sub { margin-top:.4rem; font-size:.92rem; color:rgba(255,255,255,.75); }
 .testi-dots { display:flex; gap:8px; justify-content:center; margin-top:26px; }
 .testi-dots button { width:8px; height:8px; border-radius:50%; border:none; background:var(--line); cursor:pointer; padding:0; transition:background .3s,width .3s; }
 .testi-dots button.active { background:var(--ink); width:22px; border-radius:999px; }
