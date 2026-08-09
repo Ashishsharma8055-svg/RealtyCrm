@@ -263,11 +263,15 @@ function viewPipeline() {
   const cols = STAGES.map((s) => ({ stage: s, leads: [] }));
   activeLeads.forEach((l) => { const s = known.has(l.stage) ? l.stage : STAGES[0]; cols.find((c) => c.stage === s).leads.push(l); });
   const initials = (n) => esc((n || "?").slice(0, 1).toUpperCase());
-  const card = (l) => `<div class="pl-card" draggable="true" data-pllead="${l.id}" data-profile="lead:${l.id}">
+  const card = (l) => {
+    const proj = (l.projects_shared || []).filter(Boolean).join(", ");
+    const sub = [esc(l.requirement) || "", proj ? esc(proj) : ""].filter(Boolean).join(" · ") || "—";
+    return `<div class="pl-card" draggable="true" data-pllead="${l.id}" data-profile="lead:${l.id}">
       <div class="pl-card-name">${esc(l.customer_name) || esc(l.lead_number)}</div>
-      <div class="pl-card-sub">${esc(l.requirement) || "—"}${l.customer_city ? " · " + esc(l.customer_city) : ""}</div>
+      <div class="pl-card-sub">${sub}</div>
       <div class="pl-card-foot"><span class="pl-av">${initials(l.customer_name)}</span>${l.budget ? `<span class="pl-val">${esc(l.budget)}</span>` : ""}</div>
     </div>`;
+  };
   const columns = cols.map((c) => `<div class="pl-col">
       <div class="pl-col-head"><span class="pl-col-dot"></span><span class="pl-col-title">${esc(c.stage)}</span><span class="pl-col-count">${c.leads.length}</span></div>
       <div class="pl-col-body" data-plstage="${esc(c.stage)}">${c.leads.map(card).join("") || `<div class="pl-empty">Drop a lead here</div>`}</div>
@@ -277,9 +281,28 @@ function viewPipeline() {
       <div class="section-title" style="margin:0">Deal pipeline <span class="muted" style="font-weight:400">· drag a lead between stages to update it</span></div>
       <div class="pl-topstats"><span class="pl-chip pl-chip-active">${activeLeads.length} active</span><span class="pl-chip pl-chip-booked">${bookedN} booked</span></div>
     </div>
-    <div class="pl-board">${columns}</div>`;
+    <div class="pl-board"><div class="pl-col pl-col-web" id="plWebCol" style="display:none"><div class="pl-col-head"><span class="pl-col-dot" style="background:#8a6d3b"></span><span class="pl-col-title">🌐 New · Website</span><span class="pl-col-count" id="plWebCount">0</span></div><div class="pl-col-body" id="plWebBody"></div></div>${columns}</div>`;
+}
+// Load untouched website (digital) enquiries into the pipeline's first "Website" column.
+async function loadPipelineDigital() {
+  const col = document.getElementById("plWebCol"); if (!col) return;
+  let list = null; try { list = await loadWebEnquiries(); } catch (e) {}
+  const news = (list || []).filter((e) => digiStatusOf(e) === "New");
+  const body = document.getElementById("plWebBody"), cnt = document.getElementById("plWebCount");
+  if (!news.length || !body) { col.style.display = "none"; return; }
+  col.style.display = ""; if (cnt) cnt.textContent = news.length;
+  body.innerHTML = news.map((e) => {
+    const projs = (webInterests(e) || []).map((it) => it.project).filter(Boolean).join(", ");
+    return `<div class="pl-card pl-card-web" data-digorow="${esc(String(e.id))}">
+      <div class="pl-card-name">${esc(e.user) || "Website visitor"}</div>
+      <div class="pl-card-sub">${projs ? esc(projs) : "Browsing inventory"}</div>
+      <div class="pl-card-foot"><span class="pl-badge-web">🌐 Website</span>${e.mobile ? `<span class="pl-val" style="color:#8a6d3b">${esc(e.mobile)}</span>` : ""}</div>
+    </div>`;
+  }).join("");
+  body.querySelectorAll("[data-digorow]").forEach((el) => (el.onclick = () => go("digital")));
 }
 function bindPipeline() {
+  loadPipelineDigital();
   let dragId = null;
   document.querySelectorAll(".pl-card").forEach((el) => {
     el.addEventListener("dragstart", (e) => { dragId = Number(el.getAttribute("data-pllead")); el.classList.add("pl-dragging"); if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"; });
@@ -359,7 +382,7 @@ function viewDash() {
   </div>
   <div class="grid cols-3 mt-24">
     <div class="card pad"><div class="section-title">Enquiries by Stage <span class="muted" style="font-weight:400">· click a bar</span></div>${barChart(stages, "#4f46e5", "data-stage")}</div>
-    <div class="card pad"><div class="section-title">Lead Rating Split</div>${donut([{ name: "Hot", value: hot, color: "#ef4444" }, { name: "Warm", value: warm, color: "#f59e0b" }, { name: "Cold", value: cold, color: "#0ea5e9" }])}</div>
+    <div class="card pad rating-card"><div class="section-title">Lead Rating Split</div><div class="rating-body">${donut([{ name: "Hot", value: hot, color: "#ef4444" }, { name: "Warm", value: warm, color: "#f59e0b" }, { name: "Cold", value: cold, color: "#0ea5e9" }])}</div></div>
     <div class="card pad"><div class="section-title">Brokers by Grade</div>${barChart(grades, "#0ea5e9", "data-grade")}</div>
   </div>
   <div class="card pad mt-24">
@@ -1875,13 +1898,16 @@ function openLeadForm(existing) {
     const projects_shared = [], costing = {}, units = {};
     document.querySelectorAll("[data-proj]:checked").forEach((cb) => { const name = cb.getAttribute("data-proj"); projects_shared.push(name); const c = document.querySelector(`[data-cost="${CSS.escape(name)}"]`); if (c && c.value.trim()) costing[name] = c.value.trim(); const u = document.querySelector(`[data-unit="${CSS.escape(name)}"]`); if (u && u.value.trim()) units[name] = u.value.trim(); });
     const et = fieldVal("f_enquiry_type"), custOn = et !== "CP Details Only";
+    let _stage = fieldVal("f_stage"); const _status = fieldVal("f_status");
+    // Site visit done (SVD) + marked Inactive → auto-move to VDNB (visit done, not booked).
+    if (_status === "Inactive" && _stage === "SVD") _stage = "VDNB";
     const savedLead = upsert("leads", {
       id: l.id, lead_number: l.lead_number || "LD-" + Date.now().toString(36).toUpperCase(), web_src: l.web_src, web_synced_ts: l.web_synced_ts,
       lead_date: fieldVal("f_lead_date"), enquiry_type: et, requirement: fieldVal("f_requirement"), budget: fieldVal("f_budget"),
       source_type: fieldVal("f_source_type"), source_name: fieldVal("f_source_name"), source_mobile: fieldVal("f_source_mobile"), source_firm: fieldVal("f_source_firm"),
       customer_name: custOn ? fieldVal("f_customer_name") : "", customer_mobile: custOn ? fieldVal("f_customer_mobile") : "", customer_email: custOn ? fieldVal("f_customer_email") : "",
       customer_city: custOn ? fieldVal("f_customer_city") : "", customer_category: custOn ? fieldVal("f_customer_category") : "", customer_profession: custOn ? fieldVal("f_customer_profession") : "",
-      projects_shared, costing, units, stage: fieldVal("f_stage"), rating: fieldVal("f_rating"), status: fieldVal("f_status"),
+      projects_shared, costing, units, stage: _stage, rating: fieldVal("f_rating"), status: _status,
       followup_at: fieldVal("f_followup") ? fieldVal("f_followup").replace("T", " ") : "", followup_kind: fieldVal("f_followup_kind"), remark: fieldVal("f_remark"),
     });
     const extras = [];

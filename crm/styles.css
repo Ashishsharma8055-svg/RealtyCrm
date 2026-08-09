@@ -865,3 +865,14 @@ tbody tr:hover { background: var(--slate-50); }
 [data-theme="dark"] .pl-col-title { color:#e8eef7; }
 [data-theme="dark"] .pl-card { background:#16213a; border-color:#2b3a55; }
 [data-theme="dark"] .pl-card-name { color:#e8eef7; }
+
+/* Deal pipeline — website (digital) column + cards */
+.pl-col-web { border-color:#e7d9be; background:rgba(138,109,59,.05); }
+.pl-card-web { cursor:pointer; }
+.pl-badge-web { font-size:11px; font-weight:700; color:#8a6d3b; background:rgba(138,109,59,.12); padding:2px 8px; border-radius:999px; }
+[data-theme="dark"] .pl-col-web { background:rgba(138,109,59,.10); border-color:#3a3320; }
+
+/* Dashboard — Lead Rating Split: center the donut + legend in the card */
+.rating-card { display:flex; flex-direction:column; }
+.rating-body { flex:1; display:flex; align-items:center; justify-content:center; padding:8px 0; }
+.donut-wrap { justify-content:center; }
