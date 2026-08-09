@@ -188,6 +188,7 @@ const NAV = [
   ["inventory", "Inventory", '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>'],
   ["testimonials", "Testimonials", '<path d="M8 10h8M8 14h5"/><path d="M4 4h16v12H8l-4 4z"/>'],
   ["reports", "Reports", '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>'],
+  ["assistant", "AI Copilot", '<path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM18 14l.9 2.3L21 17l-2.1.7L18 20l-.9-2.3L15 17l2.1-.7z"/>'],
 ];
 const META = {
   dash: ["Dashboard", "+ New Enquiry", () => openLeadForm()],
@@ -202,6 +203,7 @@ const META = {
   inventory: ["Inventory", "+ Add Unit", () => openUnitForm()],
   testimonials: ["Testimonials", "+ Add Testimonial", () => openTestimonialForm()],
   reports: ["Reports & Analysis", "Print / PDF", () => { if (typeof window !== "undefined") window.print(); }],
+  assistant: ["AI Copilot", "🔑 AI key", () => openAiConnect()],
 };
 let active = "dash";
 function renderNav() {
@@ -222,6 +224,7 @@ function subFor(k) {
   if (k === "customers") return `${DB.customers.length} customer records`;
   if (k === "projects") return "Your project catalogue — shared with the website";
   if (k === "reports") return "Executive analysis — leads, channels & customers";
+  if (k === "assistant") return "Draft messages, summaries & plans from your CRM";
 }
 function go(k) {
   active = k; renderNav();
@@ -254,32 +257,37 @@ function donut(parts) {
 }
 
 /* ---------- Views ---------- */
-const VIEWS = { dash: viewDash, leads: viewLeads, pipeline: viewPipeline, digital: viewDigital, followups: viewFollowups, calendar: viewCalendar, brokers: viewBrokers, customers: viewCustomers, projects: viewProjectsWeb, inventory: viewInventory, testimonials: viewTestimonials, reports: viewReports };
+const VIEWS = { dash: viewDash, leads: viewLeads, pipeline: viewPipeline, digital: viewDigital, followups: viewFollowups, calendar: viewCalendar, brokers: viewBrokers, customers: viewCustomers, projects: viewProjectsWeb, inventory: viewInventory, testimonials: viewTestimonials, reports: viewReports, assistant: viewAssistant };
 
 /* ---------- Deal Pipeline (kanban of active leads) ---------- */
 function viewPipeline() {
-  const activeLeads = DB.leads.filter((l) => l.status === "Active");
+  // Board = Active leads + any lead sitting in the VDNB stage (visit done, not booked —
+  // these are Inactive but must still show in their VDNB column).
+  const boardLeads = DB.leads.filter((l) => l.status === "Active" || l.stage === "VDNB");
   const known = new Set(STAGES);
   const cols = STAGES.map((s) => ({ stage: s, leads: [] }));
-  activeLeads.forEach((l) => { const s = known.has(l.stage) ? l.stage : STAGES[0]; cols.find((c) => c.stage === s).leads.push(l); });
+  boardLeads.forEach((l) => { const s = known.has(l.stage) ? l.stage : STAGES[0]; cols.find((c) => c.stage === s).leads.push(l); });
   const initials = (n) => esc((n || "?").slice(0, 1).toUpperCase());
   const card = (l) => {
     const proj = (l.projects_shared || []).filter(Boolean).join(", ");
     const sub = [esc(l.requirement) || "", proj ? esc(proj) : ""].filter(Boolean).join(" · ") || "—";
-    return `<div class="pl-card" draggable="true" data-pllead="${l.id}" data-profile="lead:${l.id}">
-      <div class="pl-card-name">${esc(l.customer_name) || esc(l.lead_number)}</div>
+    const dead = l.status !== "Active";
+    return `<div class="pl-card${dead ? " pl-card-dead" : ""}" draggable="true" data-pllead="${l.id}" data-profile="lead:${l.id}">
+      <div class="pl-card-name">${esc(l.customer_name) || esc(l.lead_number)}${dead ? ` <span class="pl-tag-dead">${esc(l.status)}</span>` : ""}</div>
       <div class="pl-card-sub">${sub}</div>
       <div class="pl-card-foot"><span class="pl-av">${initials(l.customer_name)}</span>${l.budget ? `<span class="pl-val">${esc(l.budget)}</span>` : ""}</div>
     </div>`;
   };
-  const columns = cols.map((c) => `<div class="pl-col">
-      <div class="pl-col-head"><span class="pl-col-dot"></span><span class="pl-col-title">${esc(c.stage)}</span><span class="pl-col-count">${c.leads.length}</span></div>
+  const columns = cols.map((c) => `<div class="pl-col${c.stage === "VDNB" ? " pl-col-vdnb" : ""}">
+      <div class="pl-col-head"><span class="pl-col-dot"${c.stage === "VDNB" ? ' style="background:#94a3b8"' : ""}></span><span class="pl-col-title">${esc(c.stage)}</span><span class="pl-col-count">${c.leads.length}</span></div>
       <div class="pl-col-body" data-plstage="${esc(c.stage)}">${c.leads.map(card).join("") || `<div class="pl-empty">Drop a lead here</div>`}</div>
     </div>`).join("");
+  const activeN = DB.leads.filter((l) => l.status === "Active").length;
   const bookedN = DB.leads.filter((l) => l.status === "Booked").length;
+  const vdnbN = DB.leads.filter((l) => l.stage === "VDNB").length;
   return `<div class="pl-topbar">
       <div class="section-title" style="margin:0">Deal pipeline <span class="muted" style="font-weight:400">· drag a lead between stages to update it</span></div>
-      <div class="pl-topstats"><span class="pl-chip pl-chip-active">${activeLeads.length} active</span><span class="pl-chip pl-chip-booked">${bookedN} booked</span></div>
+      <div class="pl-topstats"><span class="pl-chip pl-chip-active">${activeN} active</span>${vdnbN ? `<span class="pl-chip pl-chip-vdnb">${vdnbN} VDNB</span>` : ""}<span class="pl-chip pl-chip-booked">${bookedN} booked</span></div>
     </div>
     <div class="pl-board"><div class="pl-col pl-col-web" id="plWebCol" style="display:none"><div class="pl-col-head"><span class="pl-col-dot" style="background:#8a6d3b"></span><span class="pl-col-title">🌐 New · Website</span><span class="pl-col-count" id="plWebCount">0</span></div><div class="pl-col-body" id="plWebBody"></div></div>${columns}</div>`;
 }
@@ -316,14 +324,162 @@ function bindPipeline() {
       const stage = col.getAttribute("data-plstage");
       if (dragId != null) {
         const l = leadById(dragId);
-        if (l && l.stage !== stage) {
-          l.stage = stage;
-          addActivity({ entity_type: "lead", entity_id: l.id, kind: "Stage moved", remark: "Moved to " + stage + " on the pipeline board.", activity_at: now() });
-          save(); toast("Moved to " + stage); go("pipeline");
+        if (l) {
+          const changes = [];
+          if (l.stage !== stage) { l.stage = stage; changes.push("stage → " + stage); }
+          // Keep status consistent with the column: VDNB = Inactive (visit done, not booked);
+          // dropping into any working stage re-activates the lead.
+          if (stage === "VDNB" && l.status !== "Inactive") { l.status = "Inactive"; changes.push("marked Inactive (VDNB)"); }
+          else if (stage !== "VDNB" && l.status !== "Active") { l.status = "Active"; changes.push("re-activated"); }
+          if (changes.length) {
+            addActivity({ entity_type: "lead", entity_id: l.id, kind: "Pipeline move", remark: changes.join(" · "), activity_at: now() });
+            save(); toast("Moved to " + stage); go("pipeline");
+          }
         }
       }
     });
   });
+}
+
+/* ================= AI Copilot (Google Gemini) ================= */
+function aiReady() { return !!(typeof DB !== "undefined" && DB && DB.gemini_key); }
+// Call Gemini 2.5 Flash with a prompt; returns the generated text. Key is stored in the
+// cloud CRM doc (admin-only) — never in the public source, never on the website.
+async function geminiGenerate(prompt) {
+  const key = (DB && DB.gemini_key) || "";
+  if (!key) { const e = new Error("no-key"); throw e; }
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + encodeURIComponent(key);
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.75, maxOutputTokens: 900 } }) });
+  if (!res.ok) { let t = ""; try { t = await res.text(); } catch (e) {} throw new Error("Gemini " + res.status + (res.status === 400 ? " — is the API key correct?" : res.status === 403 ? " — key blocked (check API restrictions)" : res.status === 429 ? " — daily free limit reached, try later" : "") + (t ? " · " + t.slice(0, 160) : "")); }
+  const data = await res.json();
+  const text = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts.map((p) => p.text || "").join("");
+  if (!text) throw new Error("Empty response — try rephrasing.");
+  return text.trim();
+}
+function openAiConnect(after) {
+  modal("🔑 Connect Google Gemini (free)", `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-body" style="font-size:13px;line-height:1.75">
+      <p>Your AI drafting runs on <b>Google Gemini</b> — free for your everyday use. One-time setup:</p>
+      <ol style="padding-left:20px;margin:6px 0 12px">
+        <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener"><b>aistudio.google.com/apikey</b></a> and sign in with your Google account.</li>
+        <li>Click <b>Create API key</b> → <b>Copy</b> it (it starts with <code>AIza…</code>).</li>
+        <li>Paste it below and Save.</li>
+      </ol>
+      <input id="ai_key" type="password" class="search" style="width:100%;font-family:ui-monospace,monospace" placeholder="Paste your Gemini API key…" value="${esc((DB && DB.gemini_key) || "")}"/>
+      <p class="muted" style="font-size:11px;margin-top:8px">Stored privately in your CRM account (only you can read it). It is never put on your public website.</p>
+    </div></div></div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button>${DB && DB.gemini_key ? `<button class="btn lightdanger" id="aiKeyClear">Remove key</button>` : ""}<button class="btn primary" id="aiKeySave">Save key</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  const clr = document.getElementById("aiKeyClear"); if (clr) clr.onclick = () => { delete DB.gemini_key; save(); toast("AI key removed"); closeModal(); };
+  document.getElementById("aiKeySave").onclick = () => { const k = fieldVal("ai_key"); if (!k) return toast("Paste your key first"); DB.gemini_key = k; save(); toast("AI connected ✓"); closeModal(); if (after) after(); };
+}
+// Build the prompt for a per-lead message draft.
+function leadDraftPrompt(l, recipient, channel, intent) {
+  const proj = (l.projects_shared || []).filter(Boolean).join(", ");
+  const facts = [
+    `Customer name: ${l.customer_name || "the customer"}`,
+    l.requirement ? `Requirement: ${l.requirement}` : "",
+    l.budget ? `Budget: ${l.budget}` : "",
+    proj ? `Project(s) shared: ${proj}` : "",
+    l.units && Object.keys(l.units).length ? `Unit(s) discussed: ${Object.values(l.units).join(", ")}` : "",
+    l.stage ? `Current stage: ${l.stage}` : "",
+    l.rating ? `Lead rating: ${l.rating}` : "",
+    l.customer_city ? `City: ${l.customer_city}` : "",
+    l.customer_profession ? `Profession: ${l.customer_profession}` : "",
+    l.source_name ? `Referring channel partner: ${l.source_name}${l.source_firm ? " (" + l.source_firm + ")" : ""}` : "",
+    l.followup_at ? `Next follow-up: ${l.followup_at}${l.followup_kind ? " (" + l.followup_kind + ")" : ""}` : "",
+    l.remark ? `Latest remark / notes: ${l.remark}` : "",
+  ].filter(Boolean).join("\n");
+  const who = recipient === "partner" ? "the channel partner who referred this client (a business peer)" : "the customer directly";
+  const ch = channel === "email" ? "a short, professional email — begin with a 'Subject:' line" : "a warm, concise WhatsApp message (no subject line)";
+  return `You are Ashish Sharma — a trusted BPTP luxury real-estate advisor in Gurugram; personal brand "Coffee & Deals". Write ${ch} to ${who}.
+Purpose: ${intent}.
+Use these real details naturally and accurately — never invent facts, prices or dates:
+${facts}
+
+Style: warm, professional, personal, respectful of their time, never pushy or salesy. Keep it ready-to-send. Sign off simply as "Ashish". Output only the message text.`;
+}
+function openLeadDraft(leadId) {
+  const l = leadById(leadId); if (!l) return;
+  if (!aiReady()) return openAiConnect(() => openLeadDraft(leadId));
+  const intents = ["Friendly follow-up to keep momentum", "Share project details & invite for a site visit", "Post site-visit check-in", "Gentle nudge during negotiation", "Re-engage a quiet / cold lead", "Update & thank the channel partner", "Send a warm festive / occasion greeting"];
+  modal("✦ Draft a message · " + (esc(l.customer_name) || esc(l.lead_number)), `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-body"><div class="form-grid">
+      ${pillField("Send to", "ad_recipient", ["Customer", "Channel Partner"], "Customer", true)}
+      ${pillField("Channel", "ad_channel", ["WhatsApp", "Email"], "WhatsApp", true)}
+      <div class="field full"><label>What should it say?</label><select id="ad_intent">${intents.map((i) => `<option>${esc(i)}</option>`).join("")}</select></div>
+    </div></div></div></div>
+    <div style="padding:0 4px"><button class="btn primary" id="adGen" style="width:100%">✦ Generate draft</button><div id="adOut" class="ai-out" style="display:none;margin-top:14px"></div></div>`, true);
+  const gen = async () => {
+    const recip = fieldVal("ad_recipient") === "Channel Partner" ? "partner" : "customer";
+    const channel = fieldVal("ad_channel") === "Email" ? "email" : "whatsapp";
+    const intent = fieldVal("ad_intent");
+    const out = document.getElementById("adOut"); out.style.display = ""; out.innerHTML = `<div class="ai-loading"><span class="ai-orb ai-orb-sm"></span> Drafting your message…</div>`;
+    try {
+      const text = await geminiGenerate(leadDraftPrompt(l, recip, channel, intent));
+      out.innerHTML = `<textarea class="ai-textarea" id="adText" rows="8">${esc(text)}</textarea>
+        <div class="ai-actions"><button class="btn primary sm" id="adCopy">📋 Copy</button><a class="btn outline sm" id="adWa" style="display:none" target="_blank" rel="noopener">💬 Open WhatsApp</a><button class="btn ghost sm" id="adRegen">↻ Regenerate</button></div>`;
+      document.getElementById("adCopy").onclick = () => { try { navigator.clipboard.writeText(document.getElementById("adText").value); } catch (e) {} toast("Copied ✓"); };
+      document.getElementById("adRegen").onclick = gen;
+      const num = ((recip === "partner" ? l.source_mobile : l.customer_mobile) || "").replace(/\D/g, "");
+      if (channel === "whatsapp" && num.length >= 10) { const wa = document.getElementById("adWa"); wa.style.display = ""; wa.href = "https://wa.me/" + (num.length === 10 ? "91" + num : num) + "?text=" + encodeURIComponent(document.getElementById("adText").value); }
+    } catch (e) {
+      const msg = (e && e.message) || String(e);
+      out.innerHTML = `<div class="ai-err">${/no-key/.test(msg) ? "Connect your Gemini key first (AI Copilot → 🔑 AI key)." : "Couldn't generate: " + esc(msg)}</div>`;
+    }
+  };
+  document.getElementById("adGen").onclick = gen;
+}
+// Compact snapshot of the CRM for the copilot's context.
+function aiCrmContext() {
+  const L = DB.leads, active = L.filter((l) => l.status === "Active");
+  const lines = active.slice(0, 30).map((l) => `- ${l.customer_name || l.lead_number} | ${l.requirement || "?"} | budget ${l.budget || "?"} | stage ${l.stage || "?"} | rating ${l.rating || "?"} | project ${(l.projects_shared || []).join("/") || "?"} | source ${l.source_name || "-"} | followup ${l.followup_at || "none"} | remark "${(l.remark || "").slice(0, 140)}"`);
+  const bk = bucketFollowups();
+  return `CRM snapshot for ${today()}:\nTotals — leads ${L.length}, active ${active.length}, booked ${L.filter((l) => l.status === "Booked").length}. Follow-ups today ${bk.today.length}, missed ${bk.missed.length}. Brokers ${DB.brokers.length}, customers ${DB.customers.length}.\nActive leads:\n${lines.join("\n") || "none"}`;
+}
+function viewAssistant() {
+  const connected = aiReady();
+  const sugg = ["Which leads need my attention today?", "Summarise my active pipeline.", "Draft a WhatsApp follow-up for my newest Hot lead.", "List active leads that have no follow-up set.", "Write a message to re-engage cold leads."];
+  return `<div class="ai-copilot">
+    <div class="card pad ai-chat">
+      <div class="ai-chat-head"><span class="ai-orb"></span><div><b>Coffee &amp; Deals AI</b><div class="muted" style="font-size:11px">${connected ? "Connected · reads your CRM" : "Not connected — add a free key to start"}</div></div><button class="btn ghost sm" id="aiKeyBtn" style="margin-left:auto">🔑 AI key</button></div>
+      <div class="ai-messages" id="aiMessages"><div class="ai-msg ai">Hi Ashish 👋 I can read your CRM and help you <b>draft messages &amp; emails</b>, <b>summarise your pipeline</b>, and <b>plan your day</b>. ${connected ? "Ask me anything below, or tap a quick prompt." : "First tap <b>🔑 AI key</b> to connect (free, ~2 min)."}</div></div>
+      <div class="ai-input"><input id="aiInput" placeholder="Ask about your leads, or say &quot;draft a follow-up for …&quot;" autocomplete="off"/><button class="btn primary" id="aiSend">Send ↑</button></div>
+    </div>
+    <div class="card pad ai-side">
+      <div class="section-title">Quick prompts</div>
+      ${sugg.map((q) => `<button class="ai-suggest" data-aiprompt="${esc(q)}">${esc(q)}</button>`).join("")}
+      <p class="muted" style="font-size:11px;margin-top:14px;line-height:1.6">Runs on Google Gemini using your CRM data. Your key is stored privately in your account — never on the website.</p>
+    </div>
+  </div>`;
+}
+let _aiBusy = false;
+function bindAssistant() {
+  const kb = document.getElementById("aiKeyBtn"); if (kb) kb.onclick = () => openAiConnect(() => go("assistant"));
+  const send = document.getElementById("aiSend"), input = document.getElementById("aiInput");
+  const fire = () => { const q = (input.value || "").trim(); if (q) { input.value = ""; sendAi(q); } };
+  if (send) send.onclick = fire;
+  if (input) input.onkeydown = (e) => { if (e.key === "Enter") fire(); };
+  document.querySelectorAll("[data-aiprompt]").forEach((b) => (b.onclick = () => sendAi(b.getAttribute("data-aiprompt"))));
+}
+async function sendAi(q) {
+  const ms = document.getElementById("aiMessages"); if (!ms) return;
+  if (_aiBusy) return;
+  if (!aiReady()) { openAiConnect(() => go("assistant")); return; }
+  ms.insertAdjacentHTML("beforeend", `<div class="ai-msg me">${esc(q)}</div>`);
+  ms.insertAdjacentHTML("beforeend", `<div class="ai-msg ai" id="aiThinking"><span class="ai-orb ai-orb-sm"></span> Thinking…</div>`);
+  ms.scrollTop = ms.scrollHeight; _aiBusy = true;
+  const prompt = `You are the AI copilot inside Ashish Sharma's real-estate CRM ("Coffee & Deals", BPTP Gurugram). Answer helpfully and concisely using ONLY the CRM data below. When asked to draft a message, make it warm, professional and ready to send, signed "Ashish". Use simple formatting.\n\n${aiCrmContext()}\n\nQuestion: ${q}`;
+  try {
+    const text = await geminiGenerate(prompt);
+    const th = document.getElementById("aiThinking"); if (th) th.remove();
+    ms.insertAdjacentHTML("beforeend", `<div class="ai-msg ai">${esc(text).replace(/\n/g, "<br>")}</div>`);
+  } catch (e) {
+    const th = document.getElementById("aiThinking"); if (th) th.remove();
+    const msg = (e && e.message) || String(e);
+    ms.insertAdjacentHTML("beforeend", `<div class="ai-msg ai ai-err">${/no-key/.test(msg) ? "Please connect your Gemini key (🔑 AI key)." : esc(msg)}</div>`);
+  }
+  _aiBusy = false; ms.scrollTop = ms.scrollHeight;
 }
 
 function viewDash() {
@@ -1699,6 +1855,7 @@ function listCustomers(title, rows) {
 function bindView(k) {
   if (k === "leads") { leadRowsHtml(); ["lq", "lStatus", "lRating"].forEach((id) => document.getElementById(id).addEventListener("input", leadRowsHtml)); const ld = document.getElementById("lDel"); if (ld) ld.onclick = bulkDeleteLeads; }
   if (k === "pipeline") { bindPipeline(); }
+  if (k === "assistant") { bindAssistant(); }
   if (k === "dash") { updateDashDigi(); }
   if (k === "brokers") { brokerRowsHtml(); ["bq", "bType", "bGrade"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", brokerRowsHtml); }); const w = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; }; w("bDel", bulkDeleteBrokers); w("bTpl", brokerTemplate); w("bImp", brokerImport); w("bExp", brokerExport); w("bGrpFirm", () => setBrokerGroup("firm")); w("bGrpList", () => setBrokerGroup("list")); }
   if (k === "customers") { custRowsHtml(); ["cq", "cCat", "cFut", "cRate"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", custRowsHtml); }); }
@@ -2164,6 +2321,7 @@ function openLeadProfile(id) {
         <div class="pf-pills">${l.rating ? pill(l.rating, "b-" + l.rating) : ""}${l.status ? pill(l.status, "b-" + l.status) : ""}${l.stage ? pill(l.stage, "b-default") : ""}${l.customer_category ? pill(l.customer_category, "b-default") : ""}${(() => { const c = customerForLead(l); const sib = siblingLeads(l).length; return (c && sib > 1) ? `<button type="button" class="pf-pill c360-link" data-profile="customer:${c.id}">👥 ${sib} enquiries — View 360</button>` : ""; })()}</div>
       </div>
       <div class="pf-actions">
+        <button class="btn light sm" id="pfDraft">✦ Draft message</button>
         <button class="btn light sm" id="pfEdit">Edit</button>
         ${l.followup_at ? `<button class="btn lightdanger sm" id="pfCancel">Cancel follow-up</button>` : ""}
       </div>
@@ -2210,6 +2368,7 @@ function openLeadProfile(id) {
   </div>`;
   modal("Lead Profile", body, true);
   document.getElementById("pfEdit").onclick = () => { closeModal(); openLeadForm(l); };
+  const pfd = document.getElementById("pfDraft"); if (pfd) pfd.onclick = () => openLeadDraft(id);
   const cb = document.getElementById("pfCancel");
   if (cb) cb.onclick = () => { if (!confirm("Cancel this follow-up? It will be logged in the record and removed from the follow-up list.")) return; addActivity({ entity_type: "lead", entity_id: id, kind: "Follow-up Cancelled", remark: "Scheduled " + fmtDate(l.followup_at) + " was cancelled.", activity_at: now() }); l.followup_at = ""; save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Cancelled and logged"); };
   const plRemarkEl = document.getElementById("pl_remark");
