@@ -178,6 +178,7 @@ function recordLabel(type, id) {
 const NAV = [
   ["dash", "Dashboard", '<path d="M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"/>'],
   ["leads", "Enquiries", '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>'],
+  ["pipeline", "Deal Pipeline", '<rect x="3" y="4" width="4.5" height="16" rx="1"/><rect x="9.75" y="4" width="4.5" height="10" rx="1"/><rect x="16.5" y="4" width="4.5" height="13" rx="1"/>'],
   ["digital", "Digital Enquiry", '<path d="M4 4h16v12H5.2L4 17.5z"/><path d="M8 9h8M8 12h5"/>'],
   ["followups", "Follow-ups", '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h9"/>'],
   ["calendar", "Calendar", '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>'],
@@ -191,6 +192,7 @@ const NAV = [
 const META = {
   dash: ["Dashboard", "+ New Enquiry", () => openLeadForm()],
   leads: ["Enquiries", "+ New Enquiry", () => openLeadForm()],
+  pipeline: ["Deal Pipeline", "+ New Enquiry", () => openLeadForm()],
   digital: ["Digital Enquiry", "⟳ Refresh", () => populateDigital()],
   followups: ["Follow-ups", "+ New Enquiry", () => openLeadForm()],
   calendar: ["Calendar", "+ New Enquiry", () => openLeadForm()],
@@ -210,6 +212,7 @@ function subFor(k) {
   const b = bucketFollowups();
   if (k === "dash") return "Live overview of your pipeline";
   if (k === "leads") return `${DB.leads.length} total leads`;
+  if (k === "pipeline") return `${DB.leads.filter((l) => l.status === "Active").length} active leads · drag through the stages`;
   if (k === "digital") return "Website enquiries — review and transfer into your CRM";
   if (k === "inventory") return "Live unit availability across projects";
   if (k === "testimonials") return "Customer reviews shown on your website";
@@ -251,7 +254,54 @@ function donut(parts) {
 }
 
 /* ---------- Views ---------- */
-const VIEWS = { dash: viewDash, leads: viewLeads, digital: viewDigital, followups: viewFollowups, calendar: viewCalendar, brokers: viewBrokers, customers: viewCustomers, projects: viewProjectsWeb, inventory: viewInventory, testimonials: viewTestimonials, reports: viewReports };
+const VIEWS = { dash: viewDash, leads: viewLeads, pipeline: viewPipeline, digital: viewDigital, followups: viewFollowups, calendar: viewCalendar, brokers: viewBrokers, customers: viewCustomers, projects: viewProjectsWeb, inventory: viewInventory, testimonials: viewTestimonials, reports: viewReports };
+
+/* ---------- Deal Pipeline (kanban of active leads) ---------- */
+function viewPipeline() {
+  const activeLeads = DB.leads.filter((l) => l.status === "Active");
+  const known = new Set(STAGES);
+  const cols = STAGES.map((s) => ({ stage: s, leads: [] }));
+  activeLeads.forEach((l) => { const s = known.has(l.stage) ? l.stage : STAGES[0]; cols.find((c) => c.stage === s).leads.push(l); });
+  const initials = (n) => esc((n || "?").slice(0, 1).toUpperCase());
+  const card = (l) => `<div class="pl-card" draggable="true" data-pllead="${l.id}" data-profile="lead:${l.id}">
+      <div class="pl-card-name">${esc(l.customer_name) || esc(l.lead_number)}</div>
+      <div class="pl-card-sub">${esc(l.requirement) || "—"}${l.customer_city ? " · " + esc(l.customer_city) : ""}</div>
+      <div class="pl-card-foot"><span class="pl-av">${initials(l.customer_name)}</span>${l.budget ? `<span class="pl-val">${esc(l.budget)}</span>` : ""}</div>
+    </div>`;
+  const columns = cols.map((c) => `<div class="pl-col">
+      <div class="pl-col-head"><span class="pl-col-dot"></span><span class="pl-col-title">${esc(c.stage)}</span><span class="pl-col-count">${c.leads.length}</span></div>
+      <div class="pl-col-body" data-plstage="${esc(c.stage)}">${c.leads.map(card).join("") || `<div class="pl-empty">Drop a lead here</div>`}</div>
+    </div>`).join("");
+  const bookedN = DB.leads.filter((l) => l.status === "Booked").length;
+  return `<div class="pl-topbar">
+      <div class="section-title" style="margin:0">Deal pipeline <span class="muted" style="font-weight:400">· drag a lead between stages to update it</span></div>
+      <div class="pl-topstats"><span class="pl-chip pl-chip-active">${activeLeads.length} active</span><span class="pl-chip pl-chip-booked">${bookedN} booked</span></div>
+    </div>
+    <div class="pl-board">${columns}</div>`;
+}
+function bindPipeline() {
+  let dragId = null;
+  document.querySelectorAll(".pl-card").forEach((el) => {
+    el.addEventListener("dragstart", (e) => { dragId = Number(el.getAttribute("data-pllead")); el.classList.add("pl-dragging"); if (e.dataTransfer) e.dataTransfer.effectAllowed = "move"; });
+    el.addEventListener("dragend", () => { el.classList.remove("pl-dragging"); dragId = null; document.querySelectorAll(".pl-over").forEach((c) => c.classList.remove("pl-over")); });
+  });
+  document.querySelectorAll(".pl-col-body").forEach((col) => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("pl-over"); if (e.dataTransfer) e.dataTransfer.dropEffect = "move"; });
+    col.addEventListener("dragleave", () => col.classList.remove("pl-over"));
+    col.addEventListener("drop", (e) => {
+      e.preventDefault(); col.classList.remove("pl-over");
+      const stage = col.getAttribute("data-plstage");
+      if (dragId != null) {
+        const l = leadById(dragId);
+        if (l && l.stage !== stage) {
+          l.stage = stage;
+          addActivity({ entity_type: "lead", entity_id: l.id, kind: "Stage moved", remark: "Moved to " + stage + " on the pipeline board.", activity_at: now() });
+          save(); toast("Moved to " + stage); go("pipeline");
+        }
+      }
+    });
+  });
+}
 
 function viewDash() {
   const L = DB.leads;
@@ -284,15 +334,21 @@ function viewDash() {
 
   return `
   <div class="grid cols-4">
-    ${stat("Total Enquiries", L.length, "#4f46e5", active_ + " active", "leads:all")}
+    ${stat("Active Enquiries", active_, "#4f46e5", L.length + " total · " + booked + " booked", "leads:active")}
+    <div class="card pad stat tile-click" data-drill="brokers:active">
+      <span class="stat-corner" title="Total brokers (headcount)">${DB.brokers.length} total</span>
+      <div class="stat-label">Active vs Live Brokers</div>
+      <div class="stat-value" style="color:#2563eb">${activeBrokers}<span class="stat-vs"> / ${liveBrokers} live</span></div>
+      <div class="stat-hint">active (brought enquiry) vs live</div>
+      <div class="stat-go">View ›</div>
+    </div>
     <div class="card pad stat tile-click" data-drill="brokers:all">
       <span class="stat-corner" title="Brokers working in live firms">${liveFirmBrokers} broker${liveFirmBrokers === 1 ? "" : "s"}</span>
       <div class="stat-label">Broker Firms</div>
-      <div class="stat-value" style="color:#2563eb">${liveFirms}</div>
+      <div class="stat-value" style="color:#0d9488">${liveFirms}</div>
       <div class="stat-hint">live · ${totalFirms} firm${totalFirms === 1 ? "" : "s"} total</div>
       <div class="stat-go">View ›</div>
     </div>
-    ${stat("Active Brokers", activeBrokers, "#0d9488", "Brought an enquiry", "brokers:active")}
     ${stat("Customers", DB.customers.length, "#0f172a", DB.projects.length + " projects", "goto:customers")}
   </div>
   <div class="grid cols-4 mt-16">
@@ -1619,6 +1675,7 @@ function listCustomers(title, rows) {
 /* ---------- View bindings ---------- */
 function bindView(k) {
   if (k === "leads") { leadRowsHtml(); ["lq", "lStatus", "lRating"].forEach((id) => document.getElementById(id).addEventListener("input", leadRowsHtml)); const ld = document.getElementById("lDel"); if (ld) ld.onclick = bulkDeleteLeads; }
+  if (k === "pipeline") { bindPipeline(); }
   if (k === "dash") { updateDashDigi(); }
   if (k === "brokers") { brokerRowsHtml(); ["bq", "bType", "bGrade"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", brokerRowsHtml); }); const w = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; }; w("bDel", bulkDeleteBrokers); w("bTpl", brokerTemplate); w("bImp", brokerImport); w("bExp", brokerExport); w("bGrpFirm", () => setBrokerGroup("firm")); w("bGrpList", () => setBrokerGroup("list")); }
   if (k === "customers") { custRowsHtml(); ["cq", "cCat", "cFut", "cRate"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", custRowsHtml); }); }
