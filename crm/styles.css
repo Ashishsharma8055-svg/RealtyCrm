@@ -876,3 +876,20 @@ tbody tr:hover { background: var(--slate-50); }
 .rating-card { display:flex; flex-direction:column; }
 .rating-body { flex:1; display:flex; align-items:center; justify-content:center; padding:8px 0; }
 .donut-wrap { justify-content:center; }
+
+/* Lead profile — Quick Update (one-tap Stage / Rating / Status) */
+.pf-quick-card { margin-top:16px; border:1px solid var(--slate-200); border-radius:14px; padding:16px 18px; background:var(--slate-50); }
+.pf-quick-head { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--slate-600); margin-bottom:14px; }
+.pf-quick-head svg { width:16px; height:16px; }
+.pf-quick-row { display:flex; align-items:center; gap:14px; padding:8px 0; flex-wrap:wrap; }
+.pf-quick-row + .pf-quick-row { border-top:1px dashed var(--slate-200); }
+.pf-quick-label { font-size:12px; font-weight:700; color:var(--slate-500); text-transform:uppercase; letter-spacing:.03em; width:64px; flex:0 0 auto; }
+.pf-quick-pills { display:flex; flex-wrap:wrap; gap:7px; }
+.qpill { border:1.5px solid var(--slate-200); background:var(--panel); color:var(--slate-600); padding:6px 14px; border-radius:999px; font-size:12.5px; font-weight:600; cursor:pointer; font-family:inherit; transition:all .12s; }
+.qpill:hover { border-color:#a5b4fc; color:var(--indigo); transform:translateY(-1px); }
+.qpill.on { background:var(--indigo); border-color:var(--indigo); color:#fff; box-shadow:0 3px 10px rgba(79,70,229,.3); }
+.qpill.q-red { color:#dc2626; border-color:#fecaca; } .qpill.q-red.on { background:#dc2626; border-color:#dc2626; color:#fff; box-shadow:0 3px 10px rgba(220,38,38,.3); }
+.qpill.q-amber { color:#b45309; border-color:#fde68a; } .qpill.q-amber.on { background:#f59e0b; border-color:#f59e0b; color:#fff; box-shadow:0 3px 10px rgba(245,158,11,.3); }
+.qpill.q-green { color:#059669; border-color:#a7f3d0; } .qpill.q-green.on { background:#059669; border-color:#059669; color:#fff; box-shadow:0 3px 10px rgba(5,150,105,.3); }
+.qpill.q-blue { color:#0ea5e9; border-color:#bae6fd; } .qpill.q-blue.on { background:#0ea5e9; border-color:#0ea5e9; color:#fff; box-shadow:0 3px 10px rgba(14,165,233,.3); }
+[data-theme="dark"] .pf-quick-card { background:#131c31; border-color:#26324a; }

@@ -2115,6 +2115,10 @@ const IC = {
 function heroCard(icon, label, value, color) {
   return `<div class="pf-hero-card h-${color}"><div class="pf-hc-ic">${icon}</div><div class="pf-hc-k">${label}</div><div class="pf-hc-v">${value}</div></div>`;
 }
+// One-tap pill row for the lead profile (Stage / Rating / Status), updates + saves instantly.
+function pfQuickRow(label, field, opts, cur, leadId, colors) {
+  return `<div class="pf-quick-row"><span class="pf-quick-label">${label}</span><div class="pf-quick-pills">${opts.map((o) => `<button type="button" class="qpill ${colors && colors[o] ? colors[o] : ""}${String(cur) === String(o) ? " on" : ""}" data-leadquick="${leadId}::${field}::${esc(o)}">${esc(o)}</button>`).join("")}</div></div>`;
+}
 function iRow(label, val) { return `<div class="pf-ir"><span class="pf-ir-k">${label}</span><span class="pf-ir-v">${val || "—"}</span></div>`; }
 function journeyHtml(entity, id, emptyMsg) {
   const acts = activitiesFor(entity, id);
@@ -2170,6 +2174,12 @@ function openLeadProfile(id) {
         ${heroCard(IC.home, "Requirement", esc(l.requirement) || "—", "teal")}
         ${heroCard(IC.flag, "Stage", esc(l.stage) || "—", "amber")}
         ${heroCard(IC.clock, "Next Follow-up", l.followup_at ? fmtDate(l.followup_at) + (l.followup_kind ? ` · ${esc(l.followup_kind)}` : "") : "Not set", l.followup_at ? "rose" : "green")}
+      </div>
+      <div class="pf-quick-card">
+        <div class="pf-quick-head">${IC.flag} Quick Update <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— one tap to change &amp; save</span></div>
+        ${pfQuickRow("Stage", "stage", STAGES, l.stage, id, null)}
+        ${pfQuickRow("Rating", "rating", RATINGS, l.rating, id, { Hot: "q-red", Warm: "q-amber", Cold: "q-blue" })}
+        ${pfQuickRow("Status", "status", STATUSES, l.status, id, { Active: "q-amber", Inactive: "q-red", Booked: "q-green" })}
       </div>
       <div class="pf-two">
         <div class="pf-info-card accent-indigo">
@@ -2400,6 +2410,17 @@ document.addEventListener("click", (e) => {
   const cp360 = e.target.closest("[data-cp360]"); if (cp360) { e.preventDefault(); return openCP360(cp360.getAttribute("data-cp360")); }
   const stage = e.target.closest("[data-stage]"); if (stage) return openDrill("stage:" + stage.getAttribute("data-stage"));
   const grade = e.target.closest("[data-grade]"); if (grade) return openDrill("grade:" + grade.getAttribute("data-grade"));
+  const lq = e.target.closest("[data-leadquick]"); if (lq) {
+    const parts = lq.getAttribute("data-leadquick").split("::"); const id = Number(parts[0]), field = parts[1], val = parts[2];
+    const l = leadById(id); if (!l) return;
+    if (l[field] === val) return;   // already set
+    l[field] = val;
+    if (l.status === "Inactive" && l.stage === "SVD") l.stage = "VDNB";   // site visit done + inactive → VDNB
+    addActivity({ entity_type: "lead", entity_id: id, kind: field.charAt(0).toUpperCase() + field.slice(1) + " updated", remark: field + " → " + val, activity_at: now() });
+    save(); gcalMaybeInsert("lead", l); toast("Updated · " + field + " → " + val);
+    go(active); openLeadProfile(id);
+    return;
+  }
   const prof = e.target.closest("[data-profile]"); if (prof) return openProfile(prof.getAttribute("data-profile"));
   const openrec = e.target.closest("[data-openrec]"); if (openrec) return openProfile(openrec.getAttribute("data-openrec"));
   const fuu = e.target.closest("[data-fuupdate]"); if (fuu) return openProfile(fuu.getAttribute("data-fuupdate"));
