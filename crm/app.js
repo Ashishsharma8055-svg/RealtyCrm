@@ -2176,7 +2176,7 @@ function openLeadProfile(id) {
         ${heroCard(IC.clock, "Next Follow-up", l.followup_at ? fmtDate(l.followup_at) + (l.followup_kind ? ` · ${esc(l.followup_kind)}` : "") : "Not set", l.followup_at ? "rose" : "green")}
       </div>
       <div class="pf-quick-card">
-        <div class="pf-quick-head">${IC.flag} Quick Update <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— one tap to change &amp; save</span></div>
+        <div class="pf-quick-head">⚡ Quick Update <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— one tap to change &amp; save</span></div>
         ${pfQuickRow("Stage", "stage", STAGES, l.stage, id, null)}
         ${pfQuickRow("Rating", "rating", RATINGS, l.rating, id, { Hot: "q-red", Warm: "q-amber", Cold: "q-blue" })}
         ${pfQuickRow("Status", "status", STATUSES, l.status, id, { Active: "q-amber", Inactive: "q-red", Booked: "q-green" })}
