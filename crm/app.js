@@ -341,37 +341,105 @@ function bindPipeline() {
   });
 }
 
-/* ================= AI Copilot (Google Gemini) ================= */
-function aiReady() { return !!(typeof DB !== "undefined" && DB && DB.gemini_key); }
-// Call Gemini 2.5 Flash with a prompt; returns the generated text. Key is stored in the
-// cloud CRM doc (admin-only) — never in the public source, never on the website.
-async function geminiGenerate(prompt) {
-  const key = (DB && DB.gemini_key) || "";
-  if (!key) { const e = new Error("no-key"); throw e; }
-  const url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + encodeURIComponent(key);
+/* ================= AI Copilot (Google Gemini + Groq fallback) =================
+   The user pastes ONE key. We auto-detect the provider from its shape:
+     • starts with "gsk_"  → Groq  (free, no credit card, no billing — most reliable)
+     • otherwise (AIza…)   → Google Gemini (free tier; can hit billing quirks)
+   Each provider tries a few free models in order and auto-retries transient
+   failures (429/500/503) with short backoff, so one hiccup doesn't block a draft.
+   The key lives in the cloud CRM doc (admin-only) — never in source, never on the site. */
+function aiKey() { return (typeof DB !== "undefined" && DB && DB.gemini_key) || ""; }
+function aiReady() { return !!aiKey(); }
+function aiProvider(k) { k = k || aiKey(); return /^gsk_/.test(k) ? "groq" : "gemini"; }
+function aiProviderLabel() { return aiProvider() === "groq" ? "Groq (Llama)" : "Google Gemini"; }
+const _sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Is this HTTP status worth retrying / trying the next model?
+function _aiTransient(status) { return status === 429 || status === 500 || status === 502 || status === 503 || status === 504; }
+function _aiFriendly(provider, status, body) {
+  const b = (body || "").toLowerCase();
+  if (status === 400) return "the API key looks wrong — re-paste it (🔑 AI key)";
+  if (status === 401 || status === 403) return "key blocked or invalid — check it (🔑 AI key)";
+  if (status === 429) {
+    if (/prepay|credit|billing|depleted/.test(b)) return "this key's Google project has billing turned on, so Gemini won't use the free tier. Make a fresh key in a NEW project (no billing), or switch to a free Groq key — see 🔑 AI key";
+    return "the free rate limit was hit — waiting a moment and retrying";
+  }
+  return "service busy, retrying";
+}
+// One raw call to Gemini for a given model.
+async function _callGemini(key, model, prompt) {
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(key);
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.75, maxOutputTokens: 900 } }) });
-  if (!res.ok) { let t = ""; try { t = await res.text(); } catch (e) {} throw new Error("Gemini " + res.status + (res.status === 400 ? " — is the API key correct?" : res.status === 403 ? " — key blocked (check API restrictions)" : res.status === 429 ? " — daily free limit reached, try later" : "") + (t ? " · " + t.slice(0, 160) : "")); }
+  if (!res.ok) { let t = ""; try { t = await res.text(); } catch (e) {} const err = new Error(t); err.status = res.status; err.body = t; throw err; }
   const data = await res.json();
   const text = data && data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts.map((p) => p.text || "").join("");
   if (!text) throw new Error("Empty response — try rephrasing.");
   return text.trim();
 }
+// One raw call to Groq (OpenAI-compatible chat completions).
+async function _callGroq(key, model, prompt) {
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key }, body: JSON.stringify({ model: model, temperature: 0.75, max_tokens: 900, messages: [{ role: "user", content: prompt }] }) });
+  if (!res.ok) { let t = ""; try { t = await res.text(); } catch (e) {} const err = new Error(t); err.status = res.status; err.body = t; throw err; }
+  const data = await res.json();
+  const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!text) throw new Error("Empty response — try rephrasing.");
+  return text.trim();
+}
+// Public entry point. Provider-aware, model fallback, transient auto-retry.
+async function aiGenerate(prompt) {
+  const key = aiKey();
+  if (!key) throw new Error("no-key");
+  const groq = aiProvider(key) === "groq";
+  const provider = groq ? "groq" : "gemini";
+  const models = groq
+    ? ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+    : ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+  const call = groq ? _callGroq : _callGemini;
+  let lastErr = null;
+  for (let mi = 0; mi < models.length; mi++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try { return await call(key, models[mi], prompt); }
+      catch (e) {
+        lastErr = e;
+        const st = e && e.status;
+        if (st && !_aiTransient(st)) { throw new Error(_aiFriendly(provider, st, e.body) + (e.body ? " · " + String(e.body).slice(0, 140) : "")); }
+        // transient: quick backoff, then retry same model once, then fall through to next model
+        if (attempt === 0) await _sleep(700);
+      }
+    }
+  }
+  const st = lastErr && lastErr.status;
+  throw new Error(_aiFriendly(provider, st || 0, lastErr && lastErr.body) + (lastErr && lastErr.body ? " · " + String(lastErr.body).slice(0, 140) : ""));
+}
+// Back-compat alias — all existing callers keep working.
+async function geminiGenerate(prompt) { return aiGenerate(prompt); }
 function openAiConnect(after) {
-  modal("🔑 Connect Google Gemini (free)", `
-    <div class="lf"><div class="lf-sec"><div class="lf-sec-body" style="font-size:13px;line-height:1.75">
-      <p>Your AI drafting runs on <b>Google Gemini</b> — free for your everyday use. One-time setup:</p>
-      <ol style="padding-left:20px;margin:6px 0 12px">
-        <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener"><b>aistudio.google.com/apikey</b></a> and sign in with your Google account.</li>
-        <li>Click <b>Create API key</b> → <b>Copy</b> it (it starts with <code>AIza…</code>).</li>
-        <li>Paste it below and Save.</li>
-      </ol>
-      <input id="ai_key" type="password" class="search" style="width:100%;font-family:ui-monospace,monospace" placeholder="Paste your Gemini API key…" value="${esc((DB && DB.gemini_key) || "")}"/>
-      <p class="muted" style="font-size:11px;margin-top:8px">Stored privately in your CRM account (only you can read it). It is never put on your public website.</p>
+  const cur = (DB && DB.gemini_key) || "";
+  const curLabel = cur ? (aiProvider(cur) === "groq" ? "a Groq key is connected" : "a Gemini key is connected") : "";
+  modal("🔑 Connect AI (free)", `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-body" style="font-size:13px;line-height:1.7">
+      <p>Paste <b>one</b> free API key below — the Copilot detects which provider it is automatically. Pick whichever is easier for you:</p>
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0">
+        <b>Option A · Groq</b> <span style="color:#16a34a;font-weight:600">— recommended, no credit card, no billing</span>
+        <ol style="padding-left:20px;margin:6px 0 0">
+          <li>Open <a href="https://console.groq.com/keys" target="_blank" rel="noopener"><b>console.groq.com/keys</b></a> → sign in (Google works).</li>
+          <li><b>Create API Key</b> → <b>Copy</b> it (starts with <code>gsk_…</code>).</li>
+        </ol>
+      </div>
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:8px 0">
+        <b>Option B · Google Gemini</b>
+        <ol style="padding-left:20px;margin:6px 0 0">
+          <li>Open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener"><b>aistudio.google.com/apikey</b></a> → <b>Create API key</b>.</li>
+          <li>Choose <b>“Create API key in new project”</b> — a project <i>with</i> billing (your Firebase one) triggers a “prepayment credits” error.</li>
+          <li><b>Copy</b> it (starts with <code>AIza…</code>).</li>
+        </ol>
+      </div>
+      <input id="ai_key" type="password" class="search" style="width:100%;font-family:ui-monospace,monospace" placeholder="Paste your Groq (gsk_…) or Gemini (AIza…) key…" value="${esc(cur)}"/>
+      <p class="muted" style="font-size:11px;margin-top:8px">${curLabel ? "Currently: <b>" + curLabel + "</b>. " : ""}Stored privately in your CRM account (only you can read it). Never put on your public website.</p>
     </div></div></div>
     <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button>${DB && DB.gemini_key ? `<button class="btn lightdanger" id="aiKeyClear">Remove key</button>` : ""}<button class="btn primary" id="aiKeySave">Save key</button></div>`, true);
   document.querySelector("[data-close2]").onclick = closeModal;
   const clr = document.getElementById("aiKeyClear"); if (clr) clr.onclick = () => { delete DB.gemini_key; save(); toast("AI key removed"); closeModal(); };
-  document.getElementById("aiKeySave").onclick = () => { const k = fieldVal("ai_key"); if (!k) return toast("Paste your key first"); DB.gemini_key = k; save(); toast("AI connected ✓"); closeModal(); if (after) after(); };
+  document.getElementById("aiKeySave").onclick = () => { const k = (fieldVal("ai_key") || "").trim(); if (!k) return toast("Paste your key first"); DB.gemini_key = k; save(); toast("AI connected ✓ · " + aiProviderLabel()); closeModal(); if (after) after(); };
 }
 // Build the prompt for a per-lead message draft.
 function leadDraftPrompt(l, recipient, channel, intent) {
@@ -442,14 +510,14 @@ function viewAssistant() {
   const sugg = ["Which leads need my attention today?", "Summarise my active pipeline.", "Draft a WhatsApp follow-up for my newest Hot lead.", "List active leads that have no follow-up set.", "Write a message to re-engage cold leads."];
   return `<div class="ai-copilot">
     <div class="card pad ai-chat">
-      <div class="ai-chat-head"><span class="ai-orb"></span><div><b>Coffee &amp; Deals AI</b><div class="muted" style="font-size:11px">${connected ? "Connected · reads your CRM" : "Not connected — add a free key to start"}</div></div><button class="btn ghost sm" id="aiKeyBtn" style="margin-left:auto">🔑 AI key</button></div>
+      <div class="ai-chat-head"><span class="ai-orb"></span><div><b>Coffee &amp; Deals AI</b><div class="muted" style="font-size:11px">${connected ? "Connected · " + esc(aiProviderLabel()) + " · reads your CRM" : "Not connected — add a free key to start"}</div></div><button class="btn ghost sm" id="aiKeyBtn" style="margin-left:auto">🔑 AI key</button></div>
       <div class="ai-messages" id="aiMessages"><div class="ai-msg ai">Hi Ashish 👋 I can read your CRM and help you <b>draft messages &amp; emails</b>, <b>summarise your pipeline</b>, and <b>plan your day</b>. ${connected ? "Ask me anything below, or tap a quick prompt." : "First tap <b>🔑 AI key</b> to connect (free, ~2 min)."}</div></div>
       <div class="ai-input"><input id="aiInput" placeholder="Ask about your leads, or say &quot;draft a follow-up for …&quot;" autocomplete="off"/><button class="btn primary" id="aiSend">Send ↑</button></div>
     </div>
     <div class="card pad ai-side">
       <div class="section-title">Quick prompts</div>
       ${sugg.map((q) => `<button class="ai-suggest" data-aiprompt="${esc(q)}">${esc(q)}</button>`).join("")}
-      <p class="muted" style="font-size:11px;margin-top:14px;line-height:1.6">Runs on Google Gemini using your CRM data. Your key is stored privately in your account — never on the website.</p>
+      <p class="muted" style="font-size:11px;margin-top:14px;line-height:1.6">Runs on ${connected ? esc(aiProviderLabel()) : "Groq or Google Gemini"} using your CRM data. Your key is stored privately in your account — never on the website.</p>
     </div>
   </div>`;
 }
