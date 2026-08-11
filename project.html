@@ -7,6 +7,10 @@
 <meta name="description" content="BPTP project details, investor ROI projections and live inventory — curated by Ashish Sharma." />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<!-- Warm up the Firebase SDK + Firestore connections early so project data loads fast. -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin />
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+<link rel="dns-prefetch" href="https://firestore.googleapis.com" />
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="css/styles.css?v=2" />
 <link rel="stylesheet" href="css/project.css" />
@@ -112,8 +116,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/ui.js"></script>
-<script src="js/data.js"></script>
+<script src="js/data.js?v=3"></script>
 <script src="js/lead-relay.js"></script>
-<script src="js/project.js?v=2"></script>
+<script src="js/project.js?v=3"></script>
 </body>
 </html>

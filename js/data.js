@@ -112,6 +112,7 @@ const LocalAdapter = (()=>{
   function save(d){ localStorage.setItem(KEY,JSON.stringify(d)); }
   return {
     async projects(){ return db().projects; },
+    projectsCached(){ try{ return db().projects; }catch(e){ return null; } },
     async project(id){ return db().projects.find(p=>p.id===id)||null; },
     async saveProject(p){ const d=db(); p.id=p.id||uid(); const i=d.projects.findIndex(x=>x.id===p.id); if(i>=0) d.projects[i]={...d.projects[i],...p}; else d.projects.push(p); save(d); return p; },
     async deleteProject(id){ const d=db(); const nm=((SEED_PROJECTS.find(s=>s.id===id)||{}).name)||id; d.projects=d.projects.filter(p=>p.id!==id); d.inventory=d.inventory.filter(u=>norm(u.project)!==norm(nm)); save(d); },
@@ -146,6 +147,14 @@ const LocalAdapter = (()=>{
 
 const FirebaseAdapter = (()=>{
   let fb=null;
+  // ---- Lightweight per-tab cache so the public site paints instantly and never
+  // shows a false "not found" during a slow/flaky network read. Stale-while-revalidate:
+  // callers get the cached copy immediately; a fresh read updates the cache in the
+  // background for the next navigation. TTL is generous — marketing data, not live prices. ----
+  const PCACHE_KEY="cnd_projects_cache", PCACHE_TTL=10*60*1000;
+  function readProjCache(){ try{ const r=JSON.parse(sessionStorage.getItem(PCACHE_KEY)); if(r&&Array.isArray(r.list)) return r; }catch(e){} return null; }
+  function writeProjCache(list){ try{ sessionStorage.setItem(PCACHE_KEY, JSON.stringify({list, ts:Date.now()})); }catch(e){} }
+  function cachedProject(id){ const c=readProjCache(); return c ? (c.list.find(p=>p.id===id)||null) : null; }
   async function ensure(){ if(fb) return fb;
     const appMod=await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js");
     const fsMod=await import("https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js");
@@ -171,9 +180,22 @@ const FirebaseAdapter = (()=>{
     ensure, _fb:()=>fb,
     // SAFETY: if the cloud catalog is empty (never migrated / offline), fall back to
     // the built-in catalogue so the public site NEVER goes blank.
-    async projects(){ const l=await all("projects"); return l.length?l:clone(SEED_PROJECTS); },
+    async projects(){ const l=await all("projects"); const out=l.length?l:clone(SEED_PROJECTS); if(l.length) writeProjCache(l); return out; },
+    // Instant, cache-first list (used to paint the listing before the network returns).
+    projectsCached(){ const c=readProjCache(); return c?c.list:null; },
     async projectsRaw(){ return all("projects"); },   // no fallback — used by the migration check
-    async project(id){ const {db,fs}=await ensure(); const s=await fs.getDoc(fs.doc(db,"projects",id)); if(s.exists()) return {id:s.id,...s.data()}; const seed=SEED_PROJECTS.find(p=>p.id===id); return seed?clone(seed):null; },
+    // Resilient single-project read. Order: live doc → per-tab cache → full list → seed.
+    // A slow/failed network read no longer produces a false "project not found".
+    async project(id){
+      try{
+        const {db,fs}=await ensure();
+        const s=await fs.getDoc(fs.doc(db,"projects",id));
+        if(s.exists()){ const p={id:s.id,...s.data()}; return p; }
+      }catch(e){ /* offline / slow — fall back below */ }
+      const cached=cachedProject(id); if(cached) return cached;
+      try{ const l=await all("projects"); if(l.length){ writeProjCache(l); const hit=l.find(p=>p.id===id); if(hit) return hit; } }catch(e){}
+      const seed=SEED_PROJECTS.find(p=>p.id===id); return seed?clone(seed):null;
+    },
     async saveProject(p){ const id=p.id; const d={...p}; delete d.id; return put("projects",id,d); },
     async deleteProject(id){ return del("projects",id); },
     async inventory(){ const l=await all("inventory"); if(l.length) return l; const m=await catMeta(); return m.inventoryInit?[]:clone(SEED_INVENTORY); },

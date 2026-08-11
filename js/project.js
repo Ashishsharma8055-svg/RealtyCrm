@@ -1,20 +1,57 @@
 /* project.js — project detail: animated slides, ROI, OTP inventory */
 (function () {
   const cfg = window.APP_CONFIG, brand = cfg.brand;
+  // Feature flag — self-serve cost sheets are paused for now. Flip to true to bring
+  // back the "🧾 Get Cost Sheet" button on opened units. While false, opening a unit
+  // just reveals the price and notes interest (Ashish follows up with the cost sheet).
+  const COSTSHEET_ENABLED = false;
   let PROJECT = null, CHART_GROWTH = null, CHART_SPLIT = null;
   let confirmationResult = null, demoCode = null, verifiedMobile = null, verifiedName = null, pendingAgent = null, otpFallback = false;
 
   document.addEventListener("DOMContentLoaded", init);
 
-  async function init() {
-    const safe = (fn) => { try { return fn(); } catch (e) { console.warn("[project]", e); } };
-    safe(initNav); safe(paintCommon);
-    const id = new URLSearchParams(location.search).get("id");
-    try { PROJECT = id ? await Store.project(id) : null; } catch (e) { PROJECT = null; console.warn("[project] load failed", e); }
-    if (!PROJECT) { document.getElementById("app").innerHTML = `<div class="container" style="padding:160px 0;text-align:center"><h2>Project not found</h2><a class="btn btn-gold" href="index.html">← Back to all projects</a></div>`; return; }
-    document.title = PROJECT.name + " · Coffee & Deals";
+  const safe = (fn) => { try { return fn(); } catch (e) { console.warn("[project]", e); } };
+  function showLoading() {
+    document.getElementById("app").innerHTML = `<div class="container" style="padding:180px 0;text-align:center">
+      <div class="pj-spin" style="width:40px;height:40px;border:3px solid rgba(180,150,90,.25);border-top-color:#c5a05a;border-radius:50%;margin:0 auto 18px;animation:pjspin .8s linear infinite"></div>
+      <p style="color:var(--ink-soft)">Loading project…</p></div>
+      <style>@keyframes pjspin{to{transform:rotate(360deg)}}</style>`;
+  }
+  function showNotFound() {
+    document.getElementById("app").innerHTML = `<div class="container" style="padding:160px 0;text-align:center">
+      <h2>Project not found</h2>
+      <p style="color:var(--ink-soft);margin:.4rem 0 1.2rem">It may still be loading, or the link has changed.</p>
+      <button class="btn btn-gold" onclick="location.reload()">↻ Try again</button>
+      <a class="btn btn-ghost" href="index.html" style="margin-left:.6rem">← All projects</a></div>`;
+  }
+  function paint(p) {
+    PROJECT = p; document.title = p.name + " · Coffee & Deals";
     safe(renderProject); safe(wireRail); safe(buildROI); safe(wireOTP); safe(wireEnquiry);
     safe(initReveal); safe(initSmoothScroll);
+  }
+  async function init() {
+    safe(initNav); safe(paintCommon);
+    const id = new URLSearchParams(location.search).get("id");
+    if (!id) { showNotFound(); return; }
+    showLoading();
+    let rendered = false;
+
+    // 1) Instant paint from the per-tab cache (warmed by the projects listing page).
+    try {
+      const cached = (typeof Store.projectsCached === "function") ? Store.projectsCached() : null;
+      const hit = cached && cached.find(p => p.id === id);
+      if (hit) { paint(hit); rendered = true; }
+      else if (cached) { /* cache exists but no match — likely a bad link */ }
+      else { safe(() => Store.projects && Store.projects().catch(() => {})); } // warm cache for next time
+    } catch (e) {}
+
+    // 2) Fresh, resilient load (with one retry) — confirms/updates what's on screen.
+    const load = async () => { try { return await Store.project(id); } catch (e) { console.warn("[project] load failed", e); return null; } };
+    let fresh = await load();
+    if (!fresh && !rendered) { await new Promise(r => setTimeout(r, 1400)); fresh = await load(); }
+
+    if (fresh) { if (!rendered || fresh.id !== (PROJECT && PROJECT.id)) paint(fresh); }
+    else if (!rendered) { showNotFound(); }
   }
 
   function paintCommon() {
@@ -339,7 +376,7 @@
       const opened = OPENED.has(u.unitNo);
       const costCell = opened ? `<b>${esc(crLabel(u.costingCr))}</b>` : `<span class="cost-locked"><span class="lock" aria-hidden="true">🔒</span><span class="cost-blur">On Enquiry</span></span>`;
       const btn = !opened ? `<button class="btn btn-gold btn-sm enqBtn" data-unit="${esc(u.unitNo)}" data-cost="${esc(crLabel(u.costingCr))}">Open</button>`
-        : IS_DOWNTOWN ? `<button class="btn btn-sheet btn-sm enqBtn" data-state="sheet" data-unit="${esc(u.unitNo)}" data-cost="${esc(crLabel(u.costingCr))}">🧾 Get Cost Sheet</button>`
+        : (IS_DOWNTOWN && COSTSHEET_ENABLED) ? `<button class="btn btn-sheet btn-sm enqBtn" data-state="sheet" data-unit="${esc(u.unitNo)}" data-cost="${esc(crLabel(u.costingCr))}">🧾 Get Cost Sheet</button>`
           : `<button class="btn btn-outline btn-sm" disabled>✓ Interest noted</button>`;
       return `<tr><td><b>${esc(u.unitNo)}</b></td><td>${esc(u.size)}</td><td>${esc(u.desc)}</td><td class="cost-cell">${costCell}</td><td>${btn}</td></tr>`;
     }).join("");
@@ -426,7 +463,7 @@
     OPENED.add(unit);
     const row = btn.closest("tr"), cell = row.querySelector(".cost-cell");
     if (cell) cell.innerHTML = `<b>${esc(cost)}</b>`;
-    if (IS_DOWNTOWN) {
+    if (IS_DOWNTOWN && COSTSHEET_ENABLED) {
       btn.dataset.state = "sheet"; btn.textContent = "🧾 Get Cost Sheet";
       btn.classList.remove("btn-gold"); btn.classList.add("btn-sheet");
     } else {
