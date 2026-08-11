@@ -549,6 +549,36 @@ async function sendAi(q) {
   }
   _aiBusy = false; ms.scrollTop = ms.scrollHeight;
 }
+// Dashboard "morning intelligence" banner: CTA + AI-refined one-liner.
+function bindDashBrief() {
+  const cta = document.getElementById("aiBriefCta");
+  if (cta) cta.onclick = () => {
+    if (aiReady()) { go("assistant"); setTimeout(() => sendAi("Plan my day: which active leads need my attention today, and what's the single best next step for each? Keep it short."), 60); }
+    else go("followups");
+  };
+}
+let _dashBriefLoaded = false;
+async function loadDashBrief() {
+  const head = document.getElementById("aiBriefHead"), sub = document.getElementById("aiBriefSub");
+  if (!head || !aiReady()) return;                 // no key → keep the data-driven fallback line
+  if (_dashBriefLoaded) return; _dashBriefLoaded = true;
+  head.classList.add("ai-brief-loading");
+  const prompt = `You are the morning intelligence inside Ashish Sharma's real-estate CRM (Coffee & Deals, BPTP Gurugram). Using ONLY the data below, reply in EXACTLY two short lines, no labels, no markdown:
+Line 1: a punchy one-sentence headline about today's pipeline (max 14 words).
+Line 2: name up to 3 specific leads that need attention today and why, comma-separated (max 30 words). If nothing is urgent, suggest one useful action.
+
+${aiCrmContext()}`;
+  try {
+    const text = await aiGenerate(prompt);
+    const lines = text.split("\n").map((s) => s.replace(/^[-*•\d.]+\s*/, "").trim()).filter(Boolean);
+    head.classList.remove("ai-brief-loading");
+    if (lines[0]) head.textContent = lines[0];
+    if (sub && lines[1]) sub.textContent = lines.slice(1).join(" ");
+  } catch (e) {
+    head.classList.remove("ai-brief-loading");
+    _dashBriefLoaded = false;                       // allow a retry next time; keep fallback line as-is
+  }
+}
 
 function viewDash() {
   const L = DB.leads;
@@ -579,7 +609,27 @@ function viewDash() {
       ${arr.length ? arr.slice(0, 4).map(fuItemSmall).join("") : `<div class="fu-none">None</div>`}
     </div>`;
 
+  const hr = new Date().getHours();
+  const greet = hr < 12 ? "Good morning" : hr < 17 ? "Good afternoon" : "Good evening";
+  const dLong = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "2-digit", month: "long" }).toUpperCase();
+  // Instant, data-driven headline so the banner is never empty; AI refines it after.
+  const briefBits = [];
+  if (bk.today.length) briefBits.push(`${bk.today.length} follow-up${bk.today.length === 1 ? "" : "s"} due today`);
+  if (bk.missed.length) briefBits.push(`${bk.missed.length} missed`);
+  if (hot) briefBits.push(`${hot} hot lead${hot === 1 ? "" : "s"}`);
+  const briefFallback = active_ ? `You have ${active_} active ${active_ === 1 ? "enquiry" : "enquiries"} in play${briefBits.length ? " — " + briefBits.join(", ") + "." : "."}` : "No active enquiries yet — add a lead to get started.";
+
   return `
+  <div class="ai-brief" id="aiBrief">
+    <div class="ai-brief-orb"><span class="ai-orb"></span></div>
+    <div class="ai-brief-body">
+      <div class="ai-brief-eyebrow">✦ COFFEE &amp; DEALS AI <span class="ai-brief-date">· ${dLong}</span></div>
+      <div class="ai-brief-greet">${greet}, Ashish</div>
+      <div class="ai-brief-head" id="aiBriefHead">${esc(briefFallback)}</div>
+      <div class="ai-brief-sub" id="aiBriefSub"></div>
+    </div>
+    <button class="ai-brief-cta" id="aiBriefCta">Review my day <span>→</span></button>
+  </div>
   <div class="grid cols-4">
     ${stat("Active Enquiries", active_, "#4f46e5", L.length + " total · " + booked + " booked", "leads:active")}
     <div class="card pad stat tile-click" data-drill="brokers:active">
@@ -1924,7 +1974,7 @@ function bindView(k) {
   if (k === "leads") { leadRowsHtml(); ["lq", "lStatus", "lRating"].forEach((id) => document.getElementById(id).addEventListener("input", leadRowsHtml)); const ld = document.getElementById("lDel"); if (ld) ld.onclick = bulkDeleteLeads; }
   if (k === "pipeline") { bindPipeline(); }
   if (k === "assistant") { bindAssistant(); }
-  if (k === "dash") { updateDashDigi(); }
+  if (k === "dash") { updateDashDigi(); bindDashBrief(); loadDashBrief(); }
   if (k === "brokers") { brokerRowsHtml(); ["bq", "bType", "bGrade"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", brokerRowsHtml); }); const w = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; }; w("bDel", bulkDeleteBrokers); w("bTpl", brokerTemplate); w("bImp", brokerImport); w("bExp", brokerExport); w("bGrpFirm", () => setBrokerGroup("firm")); w("bGrpList", () => setBrokerGroup("list")); }
   if (k === "customers") { custRowsHtml(); ["cq", "cCat", "cFut", "cRate"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", custRowsHtml); }); }
   if (k === "projects") { populateProjectsWeb(); }
@@ -2701,21 +2751,45 @@ function sideAction(a) {
     if (CLOUD) { try { localStorage.removeItem(KEY); } catch {} DB = emptyDB(); CLOUD.signOut(); toast("Signed out"); }
     else { try { sessionStorage.removeItem(SESSION_KEY); } catch {} renderLogin("local"); toast("Signed out"); }
   }
-  if (a === "changepw") {
-    if (CLOUD) {
-      const np = prompt("New password (min 6 characters)"); if (np == null) return;
-      if (np.length < 6) return toast("Password too short (min 6)");
-      CLOUD.changePassword(np).then(() => toast("Password changed")).catch((e) => toast((e && e.code) === "auth/requires-recent-login" ? "Please log out and sign in again, then retry." : "Could not change password"));
-      return;
+  if (a === "changepw") openChangePassword();
+}
+// Change the password you use to sign in to the CRM on the website.
+function openChangePassword() {
+  const email = (CLOUD && typeof CLOUD.currentEmail === "function" && CLOUD.currentEmail()) || "";
+  modal("🔒 Change website login password", `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-body">
+      <p class="muted" style="font-size:12px;line-height:1.6;margin-bottom:12px">This changes the password for your CRM login${email ? ` (<b>${esc(email)}</b>)` : ""} on <b>coffeeanddeals.in</b>. You'll use the new password next time you sign in.</p>
+      <div class="form-grid">
+        <div class="field full"><label>Current password</label><input id="cp_cur" type="password" autocomplete="current-password" placeholder="Enter current password"/></div>
+        <div class="field full"><label>New password</label><input id="cp_new" type="password" autocomplete="new-password" placeholder="At least 6 characters"/></div>
+        <div class="field full"><label>Confirm new password</label><input id="cp_new2" type="password" autocomplete="new-password" placeholder="Re-type new password"/></div>
+      </div>
+    </div></div></div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="cpSave">Update password</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  document.getElementById("cpSave").onclick = async () => {
+    const cur = fieldVal("cp_cur"), np = fieldVal("cp_new"), np2 = fieldVal("cp_new2");
+    if (!cur) return toast("Enter your current password");
+    if (np.length < 6) return toast("New password too short (min 6)");
+    if (np !== np2) return toast("New passwords don't match");
+    const btn = document.getElementById("cpSave"); btn.disabled = true; btn.textContent = "Updating…";
+    try {
+      if (CLOUD) {
+        try { await CLOUD.reauth(cur); }
+        catch (e) { btn.disabled = false; btn.textContent = "Update password"; return toast("Current password is incorrect"); }
+        await CLOUD.changePassword(np);
+      } else {
+        const ok = await verifyLogin(getAuth().user, cur);
+        if (!ok) { btn.disabled = false; btn.textContent = "Update password"; return toast("Current password is incorrect"); }
+        await setPassword(getAuth().user, np);
+      }
+      closeModal(); toast("Password changed ✓");
+    } catch (e) {
+      btn.disabled = false; btn.textContent = "Update password";
+      const code = (e && e.code) || "";
+      toast(code === "auth/weak-password" ? "Password too weak — try a longer one" : code === "auth/network-request-failed" ? "Network error — check your connection" : "Could not change password");
     }
-    const cur = prompt("Current password"); if (cur == null) return;
-    verifyLogin(getAuth().user, cur).then((ok) => {
-      if (!ok) return toast("Current password is incorrect");
-      const np = prompt("New password (min 6 characters)"); if (np == null) return;
-      if (np.length < 6) return toast("Password too short (min 6)");
-      setPassword(getAuth().user, np).then(() => toast("Password changed"));
-    });
-  }
+  };
 }
 document.getElementById("importFile").addEventListener("change", (e) => {
   const f = e.target.files[0]; if (!f) return; const r = new FileReader();

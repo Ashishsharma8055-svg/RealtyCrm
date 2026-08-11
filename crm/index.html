@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RealtyCRM — Coffee &amp; Deals</title>
-  <link rel="stylesheet" href="styles.css?v=29" />
+  <link rel="stylesheet" href="styles.css?v=30" />
 </head>
 <body>
   <div id="app">
@@ -22,8 +22,8 @@
           <summary class="side-summary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg><span>Data</span><svg class="side-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary>
           <button class="side-btn" data-action="export"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg><span>Backup</span></button>
           <button class="side-btn" data-action="import"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3m0 0l-4 4m4-4l4 4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg><span>Restore</span></button>
+          <button class="side-btn" data-action="gcal-connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span>Connect Google Calendar</span></button>
         </details>
-        <button class="side-btn" data-action="gcal-connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg><span>Connect Google Calendar</span></button>
         <div class="side-group">
           <div class="side-group-label">Account</div>
           <button class="side-btn" data-action="changepw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg><span>Change password</span></button>
@@ -100,6 +100,11 @@
         onAuth: (cb) => onAuthStateChanged(auth, cb),
         signIn: (email, pass) => signInWithEmailAndPassword(auth, email, pass),
         signOut: () => signOut(auth),
+        // Who is signed in (their login email = the website/CRM account).
+        currentEmail: () => (auth.currentUser ? auth.currentUser.email : ""),
+        // Re-verify the current password. This refreshes the session so
+        // updatePassword won't fail with "requires-recent-login".
+        reauth: (currentPass) => signInWithEmailAndPassword(auth, auth.currentUser.email, currentPass),
         changePassword: (np) => updatePassword(auth.currentUser, np),
         loadState: async () => { const s = await getDoc(ref); return s.exists() ? s.data() : null; },
         // Strip undefined values (JSON round-trip drops them) — Firestore REJECTS the
@@ -133,6 +138,6 @@
   <script src="../js/data.js?v=2"></script>
   <!-- SheetJS — same library admin.html uses, for Excel Template/Import/Export. -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=30"></script>
 </body>
 </html>
