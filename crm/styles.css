@@ -953,3 +953,43 @@ tbody tr:hover { background: var(--slate-50); }
 .ai-brief-cta:hover { background:rgba(197,160,90,.14); border-color:rgba(197,160,90,.8); }
 .ai-brief-cta:hover span { transform:translateX(3px); }
 @media (max-width:720px){ .ai-brief { flex-wrap:wrap; gap:14px; padding:18px; } .ai-brief-orb { width:52px; height:52px; } .ai-brief-head { font-size:18px; } .ai-brief-cta { width:100%; justify-content:center; } }
+
+/* =========================================================
+   Enquiry / Lead form — stylish, colourful restyle
+   (pure CSS; applies to every .lf form, light + dark)
+   ========================================================= */
+.modal-head h3 { background:linear-gradient(120deg,#4f46e5,#a855f7 70%); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; font-weight:800; letter-spacing:-.01em; }
+
+.lf-sec { border:1px solid var(--slate-200); border-radius:15px; margin-bottom:15px; overflow:hidden; box-shadow:0 3px 14px rgba(15,23,42,.06); background:var(--panel); }
+.lf-sec-head { color:#fff !important; font-weight:700; font-size:13.5px; letter-spacing:.01em; padding:13px 16px; }
+.lf-sec-head svg { color:#fff; filter:drop-shadow(0 1px 2px rgba(0,0,0,.28)); }
+.lf-sec-head .fs-hint { margin-left:auto; color:rgba(255,255,255,.88) !important; font-weight:500; opacity:1; }
+/* vivid gradient bars — one per section */
+.lf-indigo { background:linear-gradient(120deg,#4f46e5,#7c3aed) !important; }
+.lf-teal   { background:linear-gradient(120deg,#0d9488,#10b981) !important; }
+.lf-amber  { background:linear-gradient(120deg,#f59e0b,#f97316) !important; }
+.lf-purple { background:linear-gradient(120deg,#7c3aed,#c026d3) !important; }
+.lf-green  { background:linear-gradient(120deg,#16a34a,#0d9488) !important; }
+.lf-sec-body { padding:16px; }
+
+/* Pills — soft by default, colourful on hover, gradient when selected */
+.pill { background:#f1f5f9; border:1.5px solid #e2e8f0; color:#475569; padding:9px 16px; font-weight:600; }
+.pill:hover { background:#eef2ff; border-color:#a5b4fc; color:#4f46e5; transform:translateY(-1px); box-shadow:0 4px 12px rgba(79,70,229,.16); }
+.pill.on { background:linear-gradient(135deg,#6366f1,#8b5cf6); border-color:transparent; color:#fff; box-shadow:0 7px 18px rgba(124,58,237,.42); transform:translateY(-1px); }
+
+/* Inputs — subtle fill + lively focus ring */
+.field label { color:var(--slate-600); font-weight:600; letter-spacing:.01em; }
+.field input, .field select, .field textarea { background:#f8fafc; border:1.5px solid #e6ebf3; }
+.field input:focus, .field select:focus, .field textarea:focus { background:var(--panel); border-color:#6366f1; box-shadow:0 0 0 3px rgba(99,102,241,.18); }
+
+/* ---- Dark mode ---- */
+[data-theme="dark"] .modal-head h3 { -webkit-text-fill-color:transparent; background:linear-gradient(120deg,#a5b4fc,#e879f9 70%); -webkit-background-clip:text; background-clip:text; }
+[data-theme="dark"] .lf-sec { background:#111b30; border-color:#26324c; box-shadow:0 3px 16px rgba(0,0,0,.28); }
+[data-theme="dark"] .lf-sec-body { background:#111b30; }
+[data-theme="dark"] .pill { background:#1b2740; border-color:#2b3a55; color:#aab6cc; }
+[data-theme="dark"] .pill:hover { background:#222f4d; border-color:#6366f1; color:#c7d2fe; box-shadow:0 4px 12px rgba(99,102,241,.28); }
+[data-theme="dark"] .pill.on { background:linear-gradient(135deg,#6366f1,#a855f7); color:#fff; box-shadow:0 7px 18px rgba(139,92,246,.45); }
+[data-theme="dark"] .field input, [data-theme="dark"] .field select, [data-theme="dark"] .field textarea { background:#0f1a30; border-color:#2b3a55; color:#e8eef7; }
+[data-theme="dark"] .field input:focus, [data-theme="dark"] .field select:focus, [data-theme="dark"] .field textarea:focus { background:#0d1728; border-color:#818cf8; box-shadow:0 0 0 3px rgba(129,140,248,.25); }
+[data-theme="dark"] .field input::placeholder, [data-theme="dark"] .field textarea::placeholder { color:#5b6b88; }
+[data-theme="dark"] .field label { color:#aab6cc; }
