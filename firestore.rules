@@ -86,6 +86,12 @@ service cloud.firestore {
     match /tasks/{id}      { allow read, write: if isAdmin(); }
     match /settings/{id}   { allow read, write: if isAdmin(); }
 
+    // ---- AI voice calling (only you can queue/read; the Cloud Function handles dialing) ----
+    match /call_queue/{id}      { allow read, write: if isAdmin(); }
+    match /call_history/{id}    { allow read, write: if isAdmin(); }
+    match /call_dnc/{id}        { allow read, write: if isAdmin(); }
+    match /reminders_sent/{id}  { allow read, write: if isAdmin(); }
+
     // ---- Admin allow-list (optional legacy path; email list above is primary) ----
     match /admins/{uid}    { allow read: if request.auth != null; allow write: if false; }
   }
