@@ -2449,10 +2449,11 @@ function callVars(lead) {
 // The exact sentence the agent speaks first, per trigger (agent's First message = {{message}}).
 function callMessage(trigger, party, v) {
   const g = v.greeting || "Hello";
-  if (trigger === "enquiry") return `${g} ${v.customer_name || "there"}. Thank you for showing interest with Coffee and Deals. I would love to invite you to visit the site for a detailed discussion — I am sure we will have some good outcomes. This is Ashish Sharma's team from B P T P.`;
-  if (trigger === "visit") return `${g} ${v.customer_name || "there"}. Thank you for your continued interest in our project. As scheduled, your site visit is on ${v.meeting_time || "the planned date"}. I will personally assist you there. Warm regards, Ashish Sharma from B P T P.`;
-  if (trigger === "reminder") return `Hi ${v.broker_name || "there"}, ${g}. Gentle reminder — you have a meeting scheduled today with ${v.client_ref || "your client"} for ${v.project || "the project"} with Ashish Sharma at B P T P.`;
-  return `${g} ${v.customer_name || "there"}. This is a courtesy call from Ashish Sharma's team at Coffee and Deals about ${v.project || "your requirement"}.`;
+  const name = v.customer_name || "there";
+  if (trigger === "enquiry") return `${g} ${name} — this is Ashiesh Sharma's team at B P T P. Thank you for your interest. I would personally love to host you at ${v.project || "the project"} for a proper look — I am confident you will be impressed. I will follow up shortly to fix a time that suits you. Warm regards.`;
+  if (trigger === "visit") return `${g} ${name} — Ashiesh Sharma's team at B P T P here. Delighted your site visit to ${v.project || "the project"} is set for ${v.meeting_time || "the scheduled time"}. I will personally be there to show you around. Looking forward to hosting you.`;
+  if (trigger === "reminder") return `Hi ${v.broker_name || "there"}, ${g}. A quick reminder from Ashiesh Sharma's team at B P T P — you have a site meeting today with ${v.client_ref || "your client"} for ${v.project || "the project"}. I will be there to make it smooth for you both. Looking forward to it.`;
+  return `${g} ${name} — this is Ashiesh Sharma's team at B P T P. I wanted to personally connect about ${v.project || "your requirement"}. Whenever convenient, I would be glad to help you take the next step. Thank you for your time.`;
 }
 // The gatekeeper — returns {ok:true} only if EVERY safety check passes.
 function callGuard(o) {
