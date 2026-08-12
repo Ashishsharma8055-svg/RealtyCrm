@@ -2413,6 +2413,139 @@ function openLightbox(src) {
   document.body.appendChild(div);
 }
 
+/* ============================================================
+   AI VOICE CALLING (ElevenLabs) — safe by design.
+   SAFE MODE (default): logs who WOULD be called, never dials.
+   Every call passes callGuard() with several independent limits
+   so nobody is ever bombarded. Real dialing happens only via the
+   Firebase Function after you connect ElevenLabs + Twilio.
+   ============================================================ */
+const CALL_TRIGGERS = { manual: "Manual", enquiry: "Thank-you · enquiry", visit: "Thank-you · site visit", reminder: "Meeting reminder" };
+function callSettings() {
+  const d = DB.call_settings || {};
+  return {
+    liveMode: !!d.liveMode,                                   // false = SAFE MODE (never dials)
+    paused: d.paused != null ? !!d.paused : false,            // global kill switch
+    triggers: Object.assign({ manual: true, enquiry: true, visit: true, reminder: true }, d.triggers || {}),
+    perDayMax: d.perDayMax || 1,                              // max calls per person per day
+    cooldownH: d.cooldownH || 20,                             // min hours between calls to one number
+    winStart: d.winStart != null ? d.winStart : 9,            // calling window start (IST hour)
+    winEnd: d.winEnd != null ? d.winEnd : 20,                 // calling window end (IST hour, exclusive)
+    globalDailyCap: d.globalDailyCap || 100,                  // safety valve across ALL numbers
+  };
+}
+function saveCallSettings(patch) { DB.call_settings = Object.assign({}, DB.call_settings || {}, patch); save(); }
+function callLog() { if (!DB.calls) DB.calls = []; return DB.calls; }
+function callDnc() { if (!DB.call_dnc) DB.call_dnc = []; return DB.call_dnc; }
+function callDigits(s) { return String(s || "").replace(/\D/g, ""); }
+function istNow() { const n = new Date(); return new Date(n.getTime() + n.getTimezoneOffset() * 60000 + 5.5 * 3600000); }
+// The gatekeeper — returns {ok:true} only if EVERY safety check passes.
+function callGuard(o) {
+  const s = callSettings(), num = callDigits(o.number), lead = o.leadId ? leadById(o.leadId) : null;
+  if (s.paused) return { ok: false, reason: "Calling is paused (kill switch is ON)" };
+  if (!s.triggers[o.trigger]) return { ok: false, reason: `${CALL_TRIGGERS[o.trigger] || o.trigger} calls are turned off` };
+  if (num.length < 10) return { ok: false, reason: "No valid 10-digit mobile number" };
+  if (callDnc().some((d) => callDigits(d) === num)) return { ok: false, reason: "Number is on the Do-Not-Call list" };
+  if (o.party === "broker") { const b = DB.brokers.find((x) => callDigits(x.mobiles).includes(num)) || (lead && DB.brokers.find((x) => (x.name || "").toLowerCase() === (lead.source_name || "").toLowerCase())); if (b && b.connect !== "Live") return { ok: false, reason: "Channel partner is not Active (terminated)" }; }
+  if (o.party === "customer") { const c = DB.customers.find((x) => [x.mobile1, x.mobile2, x.mobile3].some((m) => callDigits(m) === num)) || (lead && DB.customers.find((x) => (x.name || "").toLowerCase() === (lead.customer_name || "").toLowerCase())); if (c && Number(c.contact_future != null ? c.contact_future : 1) === 0) return { ok: false, reason: "Customer is marked Do-not-contact" }; }
+  if (o.trigger !== "manual" && lead) {
+    if (o.party === "customer" && !lead.call_customer) return { ok: false, reason: "Auto-call to customer is OFF for this lead" };
+    if (o.party === "broker" && !lead.call_broker) return { ok: false, reason: "Auto-call to CP is OFF for this lead" };
+  }
+  const h = istNow().getHours();
+  if (h < s.winStart || h >= s.winEnd) return { ok: false, reason: `Outside calling hours (${s.winStart}:00–${s.winEnd}:00 IST)` };
+  if (o.trigger !== "manual" && o.leadId && callLog().some((c) => c.leadId === o.leadId && c.trigger === o.trigger && c.status !== "skipped")) return { ok: false, reason: "Already called for this " + (CALL_TRIGGERS[o.trigger] || o.trigger) };
+  const t = today();
+  const madeToday = callLog().filter((c) => callDigits(c.number) === num && c.status !== "skipped" && String(c.ts).slice(0, 10) === t).length;
+  if (madeToday >= s.perDayMax) return { ok: false, reason: `Daily limit reached for this number (${s.perDayMax}/day)` };
+  const last = callLog().filter((c) => callDigits(c.number) === num && c.status !== "skipped").sort((a, b) => (b.ts_ms || 0) - (a.ts_ms || 0))[0];
+  if (last && (Date.now() - (last.ts_ms || 0)) < s.cooldownH * 3600000) return { ok: false, reason: `Cooldown — this number was called under ${s.cooldownH}h ago` };
+  if (callLog().filter((c) => c.status !== "skipped" && String(c.ts).slice(0, 10) === t).length >= s.globalDailyCap) return { ok: false, reason: "Global daily safety cap reached" };
+  return { ok: true };
+}
+function requestCall(o) {
+  const s = callSettings(), g = callGuard(o);
+  const e = { id: "CALL-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: now(), ts_ms: Date.now(), party: o.party, name: o.name || "", number: callDigits(o.number), leadId: o.leadId || "", trigger: o.trigger, mode: s.liveMode ? "live" : "safe" };
+  if (!g.ok) { e.status = "skipped"; e.reason = g.reason; callLog().unshift(e); save(); return { ok: false, reason: g.reason }; }
+  if (s.liveMode) { e.status = "queued"; e.reason = "Queued for ElevenLabs"; callLog().unshift(e); save(); try { if (typeof window !== "undefined" && window.RCRM_FB && RCRM_FB.enqueueCall) RCRM_FB.enqueueCall(e); } catch (x) {} return { ok: true, live: true }; }
+  e.status = "logged"; e.reason = "Safe Mode — no real call was made"; callLog().unshift(e); save();
+  return { ok: true, live: false };
+}
+// Fire an auto trigger for a lead (called on save). All guards apply; skips are logged quietly.
+function autoCallForLead(lead, trigger) {
+  if (!lead) return; const s = callSettings(); if (!s.triggers[trigger]) return;
+  if (lead.call_customer && lead.customer_mobile) requestCall({ party: "customer", number: lead.customer_mobile, name: lead.customer_name, leadId: lead.id, trigger });
+  if (lead.call_broker && lead.source_mobile) requestCall({ party: "broker", number: lead.source_mobile, name: lead.source_name, leadId: lead.id, trigger });
+}
+function manualCall(leadId, party) {
+  const l = leadById(leadId); if (!l) return;
+  const number = party === "customer" ? l.customer_mobile : l.source_mobile;
+  const name = party === "customer" ? l.customer_name : l.source_name;
+  if (!callDigits(number)) return toast("No mobile number on file for this " + (party === "customer" ? "customer" : "CP"));
+  const s = callSettings();
+  const who = (party === "customer" ? (name || "customer") : (name || "channel partner")) + " · " + callDigits(number);
+  if (!confirm(`${s.liveMode ? "Place an AI voice call" : "Log a test call (SAFE MODE — no real call is made)"} to ${who}?`)) return;
+  const r = requestCall({ party, number, name, leadId, trigger: "manual" });
+  if (r.ok) toast(s.liveMode ? "📞 Call queued" : "✓ Safe Mode: logged (no real call made)");
+  else toast("Not called — " + r.reason);
+}
+function openCallCenter() {
+  const s = callSettings();
+  const log = callLog().slice(0, 80);
+  const tgl = (key, label) => `<label class="cc-toggle"><input type="checkbox" data-cctrig="${key}" ${s.triggers[key] ? "checked" : ""}/><span>${label}</span></label>`;
+  const rows = log.length ? log.map((c) => `<tr>
+      <td class="cc-when">${esc(String(c.ts).slice(5))}</td>
+      <td>${esc(c.name || "—")}<div class="cc-num">${esc(c.number)}</div></td>
+      <td>${c.party === "customer" ? "Customer" : "CP"}</td>
+      <td>${esc(CALL_TRIGGERS[c.trigger] || c.trigger)}</td>
+      <td><span class="cc-st cc-st-${c.status}">${esc(c.status)}</span>${c.reason ? `<div class="cc-reason">${esc(c.reason)}</div>` : ""}</td>
+    </tr>`).join("") : `<tr><td colspan="5" class="muted" style="padding:18px">No calls logged yet.</td></tr>`;
+  modal("📞 Call Center", `
+    <div class="cc">
+      <div class="cc-mode ${s.liveMode ? "live" : "safe"}">
+        <div><b>${s.liveMode ? "● LIVE — real AI calls are ON" : "● SAFE MODE — no real calls are made"}</b>
+        <div class="muted" style="font-size:11.5px;margin-top:2px">${s.liveMode ? "Calls go out through ElevenLabs. All safety limits still apply." : "Everything is logged so you can verify it, but nothing dials. Connect ElevenLabs (see the setup guide) before going live."}</div></div>
+        <label class="cc-switch"><input type="checkbox" id="ccLive" ${s.liveMode ? "checked" : ""}/><span>Go live</span></label>
+      </div>
+
+      <div class="cc-row">
+        <label class="cc-toggle cc-kill"><input type="checkbox" id="ccPause" ${s.paused ? "checked" : ""}/><span>⛔ Pause ALL calls (kill switch)</span></label>
+      </div>
+
+      <div class="cc-grid">
+        <div class="cc-card">
+          <div class="cc-h">Which calls are on</div>
+          ${tgl("manual", "Manual button")}${tgl("enquiry", "Thank-you · enquiry")}${tgl("visit", "Thank-you · site visit")}${tgl("reminder", "Meeting reminder")}
+        </div>
+        <div class="cc-card">
+          <div class="cc-h">Anti-bombard limits</div>
+          <label class="cc-lim">Max calls per person / day <input type="number" min="1" max="5" id="ccPerDay" value="${s.perDayMax}"/></label>
+          <label class="cc-lim">Cooldown between calls (hours) <input type="number" min="1" max="72" id="ccCool" value="${s.cooldownH}"/></label>
+          <label class="cc-lim">Calling window (IST) <span><input type="number" min="0" max="23" id="ccWinS" value="${s.winStart}"/>–<input type="number" min="0" max="24" id="ccWinE" value="${s.winEnd}"/></span></label>
+        </div>
+        <div class="cc-card">
+          <div class="cc-h">Do-Not-Call list</div>
+          <div class="cc-dnc">${callDnc().length ? callDnc().map((d) => `<span class="cc-dnc-chip">${esc(callDigits(d))}<button data-dncdel="${esc(callDigits(d))}">×</button></span>`).join("") : `<span class="muted" style="font-size:12px">Empty</span>`}</div>
+          <div class="cc-dnc-add"><input id="ccDncNum" placeholder="Add a number to block" inputmode="tel"/><button class="btn light sm" id="ccDncAdd">Block</button></div>
+        </div>
+      </div>
+
+      <div class="cc-h" style="margin-top:6px">Call history <span class="muted" style="font-weight:400">— every attempt, including why one was skipped</span></div>
+      <div class="cc-logwrap"><table class="cc-log"><thead><tr><th>When</th><th>Who</th><th>Party</th><th>Trigger</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div>
+    </div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Close</button><button class="btn danger" id="ccClear">Clear history</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  const live = document.getElementById("ccLive");
+  live.onchange = () => { if (live.checked && !confirm("Turn ON live calling? Real AI calls will start going out (all limits still apply). Only do this after connecting ElevenLabs.")) { live.checked = false; return; } saveCallSettings({ liveMode: live.checked }); openCallCenter(); };
+  document.getElementById("ccPause").onchange = (e) => { saveCallSettings({ paused: e.target.checked }); toast(e.target.checked ? "All calls paused" : "Calls resumed"); };
+  document.querySelectorAll("[data-cctrig]").forEach((cb) => cb.onchange = () => { const tr = Object.assign({}, callSettings().triggers); tr[cb.getAttribute("data-cctrig")] = cb.checked; saveCallSettings({ triggers: tr }); });
+  const numSet = (id, key, lo, hi) => { const el = document.getElementById(id); if (el) el.onchange = () => { let v = Math.max(lo, Math.min(hi, Number(el.value) || lo)); el.value = v; saveCallSettings({ [key]: v }); }; };
+  numSet("ccPerDay", "perDayMax", 1, 5); numSet("ccCool", "cooldownH", 1, 72); numSet("ccWinS", "winStart", 0, 23); numSet("ccWinE", "winEnd", 1, 24);
+  const add = document.getElementById("ccDncAdd"); if (add) add.onclick = () => { const n = callDigits(document.getElementById("ccDncNum").value); if (n.length < 10) return toast("Enter a valid number"); if (!callDnc().some((d) => callDigits(d) === n)) callDnc().push(n); save(); openCallCenter(); };
+  document.querySelectorAll("[data-dncdel]").forEach((b) => b.onclick = () => { const n = b.getAttribute("data-dncdel"); DB.call_dnc = callDnc().filter((d) => callDigits(d) !== n); save(); openCallCenter(); });
+  document.getElementById("ccClear").onclick = () => { if (confirm("Clear the whole call history? (Settings and limits are kept.)")) { DB.calls = []; save(); openCallCenter(); } };
+}
+
 /* ---------- Lead form ---------- */
 function openLeadForm(existing) {
   const l = existing || { lead_date: today(), source_type: "CP", stage: "Call", rating: "Warm", status: "Active" };
@@ -2473,6 +2606,14 @@ function openLeadForm(existing) {
           ${field("Follow-up Type", "f_followup_kind", l.followup_kind || "", "", SCHEDULE_TYPES)}
           ${field("Remark", "f_remark", l.remark, "textarea")}
         </div></div>
+      </div>
+      <div class="lf-sec">
+        <div class="lf-sec-head lf-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012 4.2 2 2 0 014 2h3a2 2 0 012 1.7c.1.9.3 1.8.6 2.6a2 2 0 01-.5 2.1L8 9.6a16 16 0 006 6l1.2-1.1a2 2 0 012.1-.5c.8.3 1.7.5 2.6.6a2 2 0 011.7 2z"/></svg><span>AI Voice Calling</span><span class="fs-hint">Safe Mode — nothing dials until you enable it in Settings → Call Center</span></div>
+        <div class="lf-sec-body">
+          <label class="call-toggle"><input type="checkbox" id="f_call_customer" ${l.call_customer ? "checked" : ""}/><span>Auto-call this <b>customer</b> — thank-you &amp; reminders</span></label>
+          <label class="call-toggle"><input type="checkbox" id="f_call_broker" ${l.call_broker ? "checked" : ""}/><span>Auto-call this <b>channel partner</b> — thank-you &amp; reminders</span></label>
+          <p class="muted" style="font-size:11px;margin-top:8px">Only ever calls Active CPs and contact-in-future customers · max 1 call/person/day · 9 AM–8 PM only.</p>
+        </div>
       </div>
     </div>
     <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="saveLead">Save Enquiry</button></div>`, true);
@@ -2546,7 +2687,12 @@ function openLeadForm(existing) {
       customer_city: custOn ? fieldVal("f_customer_city") : "", customer_category: custOn ? fieldVal("f_customer_category") : "", customer_profession: custOn ? fieldVal("f_customer_profession") : "",
       projects_shared, costing, units, stage: _stage, rating: fieldVal("f_rating"), status: _status,
       followup_at: fieldVal("f_followup") ? fieldVal("f_followup").replace("T", " ") : "", followup_kind: fieldVal("f_followup_kind"), remark: fieldVal("f_remark"),
+      call_customer: !!(document.getElementById("f_call_customer") || {}).checked, call_broker: !!(document.getElementById("f_call_broker") || {}).checked,
     });
+    // AI voice-calling triggers (Safe Mode logs only; nothing dials until you go live).
+    const _isNew = !l.id;
+    if (_isNew) autoCallForLead(savedLead, "enquiry");
+    if (_stage === "SVD") autoCallForLead(savedLead, "visit");
     const extras = [];
     const st = fieldVal("f_source_type"), sn = fieldVal("f_source_name");
     if (st === "CP" && sn && !DB.brokers.some((b) => (b.name || "").trim().toLowerCase() === sn.trim().toLowerCase())) {
@@ -2802,6 +2948,8 @@ function openLeadProfile(id) {
       </div>
       <div class="pf-actions">
         <button class="btn light sm" id="pfDraft">✦ Draft message</button>
+        ${callDigits(l.customer_mobile) ? `<button class="btn light sm" id="pfCallCust">📞 Call customer</button>` : ""}
+        ${callDigits(l.source_mobile) ? `<button class="btn light sm" id="pfCallCp">📞 Call CP</button>` : ""}
         <button class="btn light sm" id="pfEdit">Edit</button>
         ${l.followup_at ? `<button class="btn lightdanger sm" id="pfCancel">Cancel follow-up</button>` : ""}
       </div>
@@ -2854,6 +3002,8 @@ function openLeadProfile(id) {
   modal("Lead Profile", body, true);
   document.getElementById("pfEdit").onclick = () => { closeModal(); openLeadForm(l); };
   const pfd = document.getElementById("pfDraft"); if (pfd) pfd.onclick = () => openLeadDraft(id);
+  const pfcc = document.getElementById("pfCallCust"); if (pfcc) pfcc.onclick = () => manualCall(id, "customer");
+  const pfcp = document.getElementById("pfCallCp"); if (pfcp) pfcp.onclick = () => manualCall(id, "broker");
   const cb = document.getElementById("pfCancel");
   if (cb) cb.onclick = () => { if (!confirm("Cancel this follow-up? It will be logged in the record and removed from the follow-up list.")) return; addActivity({ entity_type: "lead", entity_id: id, kind: "Follow-up Cancelled", remark: "Scheduled " + fmtDate(l.followup_at) + " was cancelled.", activity_at: now() }); l.followup_at = ""; save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Cancelled and logged"); };
   const plRemarkEl = document.getElementById("pl_remark");
@@ -3119,6 +3269,7 @@ function sideAction(a) {
     else { try { sessionStorage.removeItem(SESSION_KEY); } catch {} renderLogin("local"); toast("Signed out"); }
   }
   if (a === "changepw") openChangePassword();
+  if (a === "callcenter") openCallCenter();
 }
 // Change the password you use to sign in to the CRM on the website.
 function openChangePassword() {
