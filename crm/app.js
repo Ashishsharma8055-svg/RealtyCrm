@@ -188,6 +188,7 @@ const NAV = [
   ["inventory", "Inventory", '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>'],
   ["testimonials", "Testimonials", '<path d="M8 10h8M8 14h5"/><path d="M4 4h16v12H8l-4 4z"/>'],
   ["reports", "Reports", '<path d="M4 20V10M10 20V4M16 20v-7M21 20H3"/>'],
+  ["analytics", "Analytics", '<path d="M3 3v18h18"/><path d="M7 15l3-3 3 2 5-6"/><circle cx="10" cy="12" r="0.6"/><circle cx="13" cy="14" r="0.6"/>'],
   ["assistant", "AI Copilot", '<path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4zM18 14l.9 2.3L21 17l-2.1.7L18 20l-.9-2.3L15 17l2.1-.7z"/>'],
 ];
 const META = {
@@ -203,14 +204,15 @@ const META = {
   inventory: ["Inventory", "+ Add Unit", () => openUnitForm()],
   testimonials: ["Testimonials", "+ Add Testimonial", () => openTestimonialForm()],
   reports: ["Reports & Analysis", "Print / PDF", () => { if (typeof window !== "undefined") window.print(); }],
+  analytics: ["Analytics & Goals", "🎯 Set goals", () => openGoalsForm()],
   assistant: ["AI Copilot", "🔑 AI key", () => openAiConnect()],
 };
 let active = "dash";
 const NAV_MAP = Object.fromEntries(NAV.map((n) => [n[0], n]));
 // Sidebar layout: plain keys render as links; a {group} renders as a collapsible section.
 const NAV_LAYOUT = [
-  "dash", "pipeline", "digital", "followups", "calendar", "reports",
-  { group: "Database", icon: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>', items: ["leads", "projects", "inventory", "customers", "brokers", "testimonials"] },
+  "dash", "pipeline", "digital", "followups", "reports", "analytics",
+  { group: "Database", icon: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>', items: ["leads", "projects", "inventory", "customers", "brokers", "testimonials", "calendar"] },
   "assistant",
 ];
 function navLinkHtml(k) {
@@ -242,6 +244,7 @@ function subFor(k) {
   if (k === "customers") return `${DB.customers.length} customer records`;
   if (k === "projects") return "Your project catalogue — shared with the website";
   if (k === "reports") return "Executive analysis — leads, channels & customers";
+  if (k === "analytics") return "Productivity, goals & an AI roadmap to hit your targets";
   if (k === "assistant") return "Draft messages, summaries & plans from your CRM";
 }
 function go(k) {
@@ -275,7 +278,7 @@ function donut(parts) {
 }
 
 /* ---------- Views ---------- */
-const VIEWS = { dash: viewDash, leads: viewLeads, pipeline: viewPipeline, digital: viewDigital, followups: viewFollowups, calendar: viewCalendar, brokers: viewBrokers, customers: viewCustomers, projects: viewProjectsWeb, inventory: viewInventory, testimonials: viewTestimonials, reports: viewReports, assistant: viewAssistant };
+const VIEWS = { dash: viewDash, leads: viewLeads, pipeline: viewPipeline, digital: viewDigital, followups: viewFollowups, calendar: viewCalendar, brokers: viewBrokers, customers: viewCustomers, projects: viewProjectsWeb, inventory: viewInventory, testimonials: viewTestimonials, reports: viewReports, analytics: viewAnalytics, assistant: viewAssistant };
 
 /* ---------- Deal Pipeline (kanban of active leads) ---------- */
 function viewPipeline() {
@@ -2033,6 +2036,157 @@ function aiReportCard() {
   </div>`;
 }
 function viewReports() { return `${aiReportCard()}${reportControls()}${reportTabs()}<div id="reportBody">${reportBodyHtml()}</div>`; }
+
+/* ============================ ANALYTICS & GOALS ============================ */
+function monthKey(d) { d = d || new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`; }
+function monthLabel(mk) { return MONTHS[Number(mk.slice(5, 7)) - 1].slice(0, 3) + " " + mk.slice(0, 4); }
+function getGoals() {
+  const g = DB.goals || {};
+  return { month: g.month || monthKey(), enquiries: Number(g.enquiries) || 0, visits: Number(g.visits) || 0, bookings: Number(g.bookings) || 0 };
+}
+// Compute the productivity picture from the raw leads/activities.
+function analyticsData() {
+  const L = DB.leads || [];
+  const mk = (s) => String(s || "").slice(0, 7);
+  const now_ = new Date();
+  const curM = monthKey(now_);
+  const prevD = new Date(now_.getFullYear(), now_.getMonth() - 1, 1), prevM = monthKey(prevD);
+  const advanced = (l) => ["SVD", "Negotiation", "VDNB"].includes(l.stage) || l.status === "Booked";
+  const inM = (l, m) => mk(l.lead_date) === m;
+  const monthStats = (m) => ({ enq: L.filter((l) => inM(l, m)).length, visits: L.filter((l) => inM(l, m) && advanced(l)).length, booked: L.filter((l) => inM(l, m) && l.status === "Booked").length });
+  const cur = monthStats(curM), prv = monthStats(prevM);
+  const series = [];
+  for (let i = 5; i >= 0; i--) { const d = new Date(now_.getFullYear(), now_.getMonth() - i, 1); const m = monthKey(d); series.push({ m, label: MONTHS[d.getMonth()].slice(0, 3), enq: L.filter((l) => inM(l, m)).length, booked: L.filter((l) => inM(l, m) && l.status === "Booked").length }); }
+  const total = L.length, booked = L.filter((l) => l.status === "Booked").length, active = L.filter((l) => l.status === "Active").length;
+  const conv = total ? Math.round((booked / total) * 100) : 0;
+  const bk = bucketFollowups();
+  const doneCount = (DB.activities || []).filter((a) => /follow|meeting|call|visit/i.test(a.kind || "")).length;
+  const adherence = (bk.today.length + bk.missed.length) ? Math.round((bk.today.length / (bk.today.length + bk.missed.length)) * 100) : 100;
+  return { curM, prevM, cur, prv, series, total, booked, active, conv, bk, doneCount, adherence };
+}
+// Grouped 6-month bar chart: enquiries vs bookings.
+function analyticsTrendSvg(series) {
+  const W = 580, H = 210, pad = 30, n = series.length || 1;
+  const mx = Math.max(1, ...series.map((s) => Math.max(s.enq, s.booked)));
+  const bw = (W - pad * 2) / n, bar = Math.max(8, bw * 0.26);
+  let g = "";
+  for (let i = 1; i <= 4; i++) { const y = H - pad - (i / 4) * (H - pad * 2); g += `<line x1="${pad}" y1="${y}" x2="${W - pad}" y2="${y}" class="an-grid"/>`; }
+  let bars = "";
+  series.forEach((s, i) => {
+    const x = pad + i * bw + bw / 2;
+    const eh = (s.enq / mx) * (H - pad * 2), bh = (s.booked / mx) * (H - pad * 2);
+    bars += `<rect x="${x - bar - 3}" y="${H - pad - eh}" width="${bar}" height="${eh}" rx="3" fill="url(#gEnq)"><title>${s.label}: ${s.enq} enquiries</title></rect>`;
+    bars += `<rect x="${x + 3}" y="${H - pad - bh}" width="${bar}" height="${bh}" rx="3" fill="url(#gBook)"><title>${s.label}: ${s.booked} booked</title></rect>`;
+    bars += `<text x="${x}" y="${H - pad + 16}" text-anchor="middle" class="an-axis">${s.label}</text>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" class="an-trend" preserveAspectRatio="xMidYMid meet">
+    <defs><linearGradient id="gEnq" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#818cf8"/><stop offset="1" stop-color="#4f46e5"/></linearGradient>
+    <linearGradient id="gBook" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset="1" stop-color="#059669"/></linearGradient></defs>
+    ${g}${bars}
+  </svg>`;
+}
+function viewAnalytics() {
+  const a = analyticsData(), goals = getGoals();
+  const kpi = (label, val, sub, cls) => `<div class="an-kpi ${cls}"><div class="an-kpi-k">${label}</div><div class="an-kpi-v">${val}</div><div class="an-kpi-s">${sub}</div></div>`;
+  const delta = (c, p) => { if (!p) return c > 0 ? `<span class="an-up">▲ new</span>` : `<span class="an-flat">—</span>`; const d = Math.round(((c - p) / p) * 100); return d > 0 ? `<span class="an-up">▲ ${d}%</span>` : d < 0 ? `<span class="an-down">▼ ${Math.abs(d)}%</span>` : `<span class="an-flat">no change</span>`; };
+  const goalRow = (label, target, actual, color) => {
+    const pct = target > 0 ? Math.min(100, Math.round((actual / target) * 100)) : 0;
+    const badge = target > 0 ? (actual >= target ? `<span class="an-badge ok">On target ✓</span>` : `<span class="an-badge">${target - actual} to go</span>`) : `<span class="an-badge muted">No target</span>`;
+    return `<div class="an-goal"><div class="an-goal-top"><span class="an-goal-name">${label}</span><span class="an-goal-val"><b>${actual}</b> / ${target || "—"} ${badge}</span></div><div class="an-goal-track"><div class="an-goal-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
+  };
+  const cmpRow = (label, c, p) => `<tr><td>${label}</td><td class="an-num">${c}</td><td class="an-num">${p}</td><td>${delta(c, p)}</td></tr>`;
+  return `
+  <div class="an-intro card pad">
+    <div><div class="an-intro-t">Productivity &amp; Goals</div><div class="muted" style="font-size:12px">Track your month, compare trends, set targets — then let AI build a roadmap to hit them.</div></div>
+    <div class="an-intro-actions"><button class="btn outline sm" id="anGoalsBtn">🎯 Set goals</button><button class="btn primary sm" id="anRoadBtn">✦ Build my roadmap</button></div>
+  </div>
+
+  <div class="an-kpis">
+    ${kpi("Total Enquiries", a.total, `${a.active} active now`, "k-indigo")}
+    ${kpi("Conversion", a.conv + "%", `${a.booked} booked all-time`, "k-green")}
+    ${kpi("This Month", a.cur.enq, `${a.cur.booked} booked · ${a.cur.visits} site visits`, "k-violet")}
+    ${kpi("Follow-up Health", a.adherence + "%", `${a.bk.missed.length} missed · ${a.bk.today.length} due today`, a.bk.missed.length ? "k-amber" : "k-teal")}
+  </div>
+
+  <div class="an-grid2">
+    <div class="card pad">
+      <div class="section-title">Goals — ${monthLabel(goals.month)}</div>
+      ${goalRow("New Enquiries", goals.enquiries, a.cur.enq, "linear-gradient(90deg,#6366f1,#8b5cf6)")}
+      ${goalRow("Site Visits", goals.visits, a.cur.visits, "linear-gradient(90deg,#f59e0b,#f97316)")}
+      ${goalRow("Bookings", goals.bookings, a.cur.booked, "linear-gradient(90deg,#34d399,#059669)")}
+      <button class="btn light sm" id="anGoalsBtn2" style="margin-top:6px">Edit targets</button>
+    </div>
+    <div class="card pad">
+      <div class="section-title">This month vs last</div>
+      <table class="an-cmp"><thead><tr><th>Metric</th><th class="an-num">${MONTHS[Number(a.curM.slice(5, 7)) - 1].slice(0, 3)}</th><th class="an-num">${MONTHS[Number(a.prevM.slice(5, 7)) - 1].slice(0, 3)}</th><th>Change</th></tr></thead>
+      <tbody>${cmpRow("Enquiries", a.cur.enq, a.prv.enq)}${cmpRow("Site visits", a.cur.visits, a.prv.visits)}${cmpRow("Bookings", a.cur.booked, a.prv.booked)}</tbody></table>
+    </div>
+  </div>
+
+  <div class="card pad">
+    <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">6-Month Trend <span class="an-legend"><span class="an-lg an-lg-e"></span>Enquiries <span class="an-lg an-lg-b"></span>Bookings</span></div>
+    ${analyticsTrendSvg(a.series)}
+  </div>
+
+  <div class="card pad air-card" style="margin-top:16px">
+    <div class="air-head"><span class="ai-orb"></span><div class="air-head-t"><b>AI Roadmap</b><div class="muted" style="font-size:11px">A week-by-week plan to hit this month's targets, built from your live data</div></div>
+      <div class="air-actions"><button type="button" class="btn primary sm" id="anRoadBtn2">✦ Build my roadmap</button></div></div>
+    <input id="anRoadFocus" class="search air-focus" autocomplete="off" placeholder="Optional focus, e.g. “convert more site visits” or “re-activate cold investors”" />
+    <div id="anRoadmapOut" class="air-out" style="display:none"></div>
+  </div>`;
+}
+function openGoalsForm() {
+  const g = getGoals();
+  modal("🎯 Set monthly goals", `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-head lf-green">${IC.target}<span>Targets for ${monthLabel(monthKey())}</span></div>
+    <div class="lf-sec-body"><div class="form-grid">
+      ${field("New Enquiries", "g_enq", g.enquiries, "number")}
+      ${field("Site Visits", "g_vis", g.visits, "number")}
+      ${field("Bookings", "g_book", g.bookings, "number")}
+    </div><p class="muted" style="font-size:11px;margin-top:8px">Progress is measured against enquiries dated in the current month.</p></div></div></div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="gSave">Save goals</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  document.getElementById("gSave").onclick = () => {
+    DB.goals = { month: monthKey(), enquiries: Number(fieldVal("g_enq")) || 0, visits: Number(fieldVal("g_vis")) || 0, bookings: Number(fieldVal("g_book")) || 0 };
+    save(); closeModal(); toast("Goals saved ✓"); if (active === "analytics") go("analytics");
+  };
+}
+let _anRoadBusy = false;
+async function buildAnalyticsRoadmap() {
+  const out = document.getElementById("anRoadmapOut"); if (!out) return;
+  if (!aiReady()) { openAiConnect(() => buildAnalyticsRoadmap()); return; }
+  if (_anRoadBusy) return; _anRoadBusy = true;
+  const a = analyticsData(), g = getGoals();
+  const focus = (document.getElementById("anRoadFocus")?.value || "").trim();
+  out.style.display = ""; out.innerHTML = `<div class="air-loading"><span class="ai-orb ai-orb-sm"></span> Building your roadmap…</div>`;
+  const gap = (t, actual) => t > 0 ? `${actual}/${t} (${Math.max(0, t - actual)} to go)` : `${actual} (no target set)`;
+  const ctx = `Month: ${monthLabel(g.month)}
+Targets vs actual so far this month:
+- New enquiries: ${gap(g.enquiries, a.cur.enq)}
+- Site visits: ${gap(g.visits, a.cur.visits)}
+- Bookings: ${gap(g.bookings, a.cur.booked)}
+Overall: ${a.total} total enquiries, ${a.active} active, ${a.booked} booked, conversion ${a.conv}%.
+Momentum: this month ${a.cur.enq} enquiries / ${a.cur.booked} booked vs last month ${a.prv.enq} / ${a.prv.booked}.
+Follow-ups: ${a.bk.today.length} due today, ${a.bk.missed.length} missed, ${a.bk.upcoming.length} upcoming.
+${aiReportContext()}`;
+  const prompt = `You are a sales performance coach for Ashish Sharma (Coffee & Deals, BPTP luxury real-estate, Gurugram). Using ONLY the data below, build a practical, professional ROADMAP to hit this month's targets. Reply in Markdown with these ## sections: Where You Stand (2-3 sentences with the key gaps); This Week's Focus (3-5 specific, prioritised actions); Weekly Plan to Month-End (a short week-by-week list); Levers & Risks (what will make or break the target); Stretch Goal (one realistic stretch if things go well). Be specific with numbers and reference real projects/segments from the data. No fluff.${focus ? `\n\nExtra focus from the user: ${focus}` : ""}\n\nDATA:\n${ctx}`;
+  try {
+    const text = await aiGenerate(prompt);
+    out.innerHTML = `<div class="air-doc"><div class="air-dochead"><span class="ai-orb ai-orb-sm"></span><b>Your Roadmap</b><span class="air-when">${now()}</span><span class="air-tools"><button class="btn ghost sm" id="anRoadCopy">📋 Copy</button><button class="btn ghost sm" id="anRoadPrint">🖨 Print</button></span></div><div class="air-body">${mdToHtml(text)}</div></div>`;
+    const cp = document.getElementById("anRoadCopy"); if (cp) cp.onclick = () => { try { navigator.clipboard.writeText(text); } catch (e) {} toast("Roadmap copied ✓"); };
+    const pr = document.getElementById("anRoadPrint"); if (pr) pr.onclick = () => window.print();
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    out.innerHTML = `<div class="ai-err">${/no-key/.test(msg) ? "Connect an AI key first (🔑 AI key on the AI Copilot page)." : esc(msg)}</div>`;
+  }
+  _anRoadBusy = false;
+}
+function bindAnalytics() {
+  const g1 = document.getElementById("anGoalsBtn"), g2 = document.getElementById("anGoalsBtn2");
+  if (g1) g1.onclick = openGoalsForm; if (g2) g2.onclick = openGoalsForm;
+  const r1 = document.getElementById("anRoadBtn"), r2 = document.getElementById("anRoadBtn2");
+  if (r1) r1.onclick = buildAnalyticsRoadmap; if (r2) r2.onclick = buildAnalyticsRoadmap;
+}
 function bindReports() {
   const rr = () => renderReportBody();
   const bindIn = (id, key) => { const el = document.getElementById(id); if (el) el.addEventListener("input", () => { reportOpts[key] = el.value; rr(); }); };
@@ -2173,6 +2327,7 @@ function bindView(k) {
   if (k === "testimonials") { populateTestimonials(); }
   if (k === "reports") { bindReports(); }
   if (k === "followups") { bindFollowupsUpcoming(); }
+  if (k === "analytics") { bindAnalytics(); }
 }
 
 /* ---------- Modal ---------- */
