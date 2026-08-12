@@ -442,7 +442,38 @@ function openAiConnect(after) {
   document.getElementById("aiKeySave").onclick = () => { const k = (fieldVal("ai_key") || "").trim(); if (!k) return toast("Paste your key first"); DB.gemini_key = k; save(); toast("AI connected ✓ · " + aiProviderLabel()); closeModal(); if (after) after(); };
 }
 // Build the prompt for a per-lead message draft.
-function leadDraftPrompt(l, recipient, channel, intent) {
+// Pull REAL selling points for the shared project(s) from the website data layer
+// (USPs, location, config, price, possession) + the CRM's own project notes, so the
+// AI can write something tailored that actually makes the customer want the project —
+// not a generic follow-up. Returns "" if nothing is known (AI then stays factual).
+async function projectKnowledge(names) {
+  names = (names || []).filter(Boolean);
+  if (!names.length) return "";
+  const nrm = (s) => String(s || "").trim().toLowerCase();
+  let web = [];
+  try { const S = WS(); if (S) web = await S.projects(); } catch (e) {}
+  const blocks = names.map((name) => {
+    const key = nrm(name);
+    const wp = (web || []).find((p) => nrm(p.name) === key) || {};
+    const cp = (DB.projects || []).find((p) => nrm(p.name) === key) || {};
+    const price = wp.priceLabel || (wp.priceFromCr ? "₹" + wp.priceFromCr + " Cr onwards" : "") || cp.price_min || "";
+    const usp = (wp.usp || []).slice(0, 3);
+    const why = (wp.why || []).slice(0, 2);
+    const facts = [
+      (wp.location || cp.location) ? "Location: " + (wp.location || cp.location) : "",
+      (wp.type || cp.type) ? "Type: " + (wp.type || cp.type) : "",
+      wp.config ? "Configuration: " + wp.config : "",
+      price ? "Price: " + price : "",
+      wp.possession ? "Possession: " + wp.possession : "",
+      (wp.tagline || wp.about || cp.notes) ? "Positioning: " + (wp.tagline || wp.about || cp.notes) : "",
+      usp.length ? "Key USPs: " + usp.join("; ") : "",
+      why.length ? "Why buy: " + why.join("; ") : "",
+    ].filter(Boolean);
+    return facts.length ? `▸ ${name}\n  ${facts.join("\n  ")}` : `▸ ${name}`;
+  });
+  return blocks.join("\n");
+}
+function leadDraftPrompt(l, recipient, channel, intent, projKnow) {
   const projArr = (l.projects_shared || []).filter(Boolean);
   const proj = projArr.join(", ");
   const units = l.units || {}, costing = l.costing || {};
@@ -468,15 +499,17 @@ function leadDraftPrompt(l, recipient, channel, intent) {
     .map((a) => `• ${a.kind || "Note"}: ${a.remark}`);
   const noteLines = [l.remark ? `• Remark: ${l.remark}` : ""].concat(notes).filter(Boolean).join("\n");
   const notesBlock = noteLines ? `\n\nMY PRIVATE SHORTHAND NOTES (informal, for my memory only — the recipient must NEVER see them as written). Read them, understand the substance of our past conversation, and reflect it in a polished, professional way. Do NOT quote them, expose slang/typos, or reveal internal tags:\n${noteLines}` : "";
+  const knowBlock = projKnow ? `\n\nREAL PROJECT INTELLIGENCE (accurate facts about the project(s) — these are your selling ammunition). Pick the 1-2 points that best fit this customer's requirement "${l.requirement || "—"}" and budget "${l.budget || "—"}", and weave them in to genuinely spark interest. Use ONLY what's here — never invent amenities, prices, dates or claims:\n${projKnow}` : "";
   const who = recipient === "partner" ? "the channel partner who referred this client (a business peer)" : "the customer directly";
   const ch = channel === "email" ? "a short, professional email — begin with a 'Subject:' line" : "a warm, concise WhatsApp message (no subject line)";
   return `You are Ashish Sharma — a trusted BPTP luxury real-estate advisor in Gurugram; personal brand "Coffee & Deals". Write ${ch} to ${who}.
 Purpose: ${intent}.
 ${projDetail ? `Build the message AROUND the specific project(s): ${projDetail}. Name the project so it reads tailored, not generic.` : ""}
+GOAL: make the recipient genuinely interested in THIS project. Lead with one concrete, relevant hook from the project intelligence below (location edge, standout USP, configuration, price advantage or possession timing) that matches their need — not vague praise. Give them a clear, low-pressure reason to take the next step (a visit, a call, or a detailed cost sheet).
 Use these real details accurately — never invent facts, prices or dates:
-${facts}${notesBlock}
+${facts}${knowBlock}${notesBlock}
 
-Style: warm, professional, personal, concise, respectful of their time, never pushy or salesy. Turn my rough notes into refined, professional phrasing. Keep it ready-to-send. Sign off simply as "Ashish". Output only the message text${channel === "email" ? " including the Subject: line" : ""}.`;
+Style: warm, professional, personal, concise, respectful of their time, never pushy or salesy — persuasive through genuine fit, not hype. Turn my rough notes into refined, professional phrasing. Keep it ready-to-send. Sign off simply as "Ashish". Output only the message text${channel === "email" ? " including the Subject: line" : ""}.`;
 }
 function openLeadDraft(leadId) {
   const l = leadById(leadId); if (!l) return;
@@ -495,7 +528,8 @@ function openLeadDraft(leadId) {
     const intent = fieldVal("ad_intent");
     const out = document.getElementById("adOut"); out.style.display = ""; out.innerHTML = `<div class="ai-loading"><span class="ai-orb ai-orb-sm"></span> Drafting your message…</div>`;
     try {
-      const text = await geminiGenerate(leadDraftPrompt(l, recip, channel, intent));
+      const pk = await projectKnowledge(l.projects_shared || []);
+      const text = await geminiGenerate(leadDraftPrompt(l, recip, channel, intent, pk));
       out.innerHTML = `<textarea class="ai-textarea" id="adText" rows="8">${esc(text)}</textarea>
         <div class="ai-actions"><button class="btn primary sm" id="adCopy">📋 Copy</button><a class="btn outline sm" id="adWa" style="display:none" target="_blank" rel="noopener">💬 Open WhatsApp</a><button class="btn ghost sm" id="adRegen">↻ Regenerate</button></div>`;
       document.getElementById("adCopy").onclick = () => { try { navigator.clipboard.writeText(document.getElementById("adText").value); } catch (e) {} toast("Copied ✓"); };
