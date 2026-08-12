@@ -126,7 +126,9 @@
         },
         // AI voice calling (LIVE mode only): drop a job for the Cloud Function to dial.
         // Dormant until you switch on Live in Call Center AND deploy the function.
-        enqueueCall: (job) => addDoc(collection(db, "call_queue"), Object.assign({ status: "pending", createdAt: Date.now() }, job)),
+        // NOTE: status/createdAt are applied LAST so the queued doc is always "pending"
+        // (the incoming job carries status:"queued" for the local log — must not win here).
+        enqueueCall: (job) => addDoc(collection(db, "call_queue"), Object.assign({}, job, { status: "pending", createdAt: Date.now() })),
       };
     } catch (e) { console.warn("Firebase init failed — falling back to local storage.", e); }
     window.dispatchEvent(new Event("rcrm-fb-ready"));

@@ -37,6 +37,8 @@ const digits = (s) => String(s || "").replace(/\D/g, "");
 const e164IN = (s) => { const d = digits(s); return d.length > 10 ? "+" + d : "+91" + d; };
 
 // Returns null if OK to call, or a short reason string if it must be skipped.
+// Uses only single-field queries (no composite Firestore index needed) and filters
+// in memory, so it can never fail on a "query requires an index" error.
 async function serverGuard(job) {
   const num = digits(job.number);
   if (num.length < 10) return "invalid number";
@@ -49,19 +51,15 @@ async function serverGuard(job) {
   const today = istDay();
   const since = Date.now() - COOLDOWN_H * 3600000;
 
-  // Cooldown: most recent completed call to this number.
-  const recent = await db.collection("call_history").where("number", "==", num)
-    .orderBy("ts", "desc").limit(1).get();
-  if (!recent.empty && (recent.docs[0].data().ts || 0) > since) return "cooldown";
+  // Cooldown + per-day cap: one simple query for this number, then check in memory.
+  const hist = await db.collection("call_history").where("number", "==", num).get();
+  let mostRecent = 0, todayCount = 0;
+  hist.forEach((d) => { const x = d.data() || {}; if ((x.ts || 0) > mostRecent) mostRecent = x.ts || 0; if (x.dayIST === today) todayCount++; });
+  if (mostRecent > since) return "cooldown";
+  if (todayCount >= PER_DAY_MAX) return "daily limit for number";
 
-  // Per-day cap for this number.
-  const dayHits = await db.collection("call_history").where("number", "==", num)
-    .where("dayIST", "==", today).limit(PER_DAY_MAX).get();
-  if (dayHits.size >= PER_DAY_MAX) return "daily limit for number";
-
-  // Global daily safety cap.
-  const globalHits = await db.collection("call_history").where("dayIST", "==", today)
-    .limit(GLOBAL_DAILY_CAP).get();
+  // Global daily safety cap (single-field query — no index needed).
+  const globalHits = await db.collection("call_history").where("dayIST", "==", today).limit(GLOBAL_DAILY_CAP).get();
   if (globalHits.size >= GLOBAL_DAILY_CAP) return "global daily cap";
 
   return null;
@@ -98,20 +96,23 @@ exports.dialQueuedCall = onDocumentCreated(
   async (event) => {
     const snap = event.data; if (!snap) return;
     const job = snap.data() || {};
-    if (job.status && job.status !== "pending") return; // already handled
-
-    const reason = await serverGuard(job);
-    if (reason) { await snap.ref.update({ status: "skipped", reason, handledAt: Date.now() }); return; }
+    console.log("dialQueuedCall received", { number: digits(job.number), trigger: job.trigger, status: job.status });
+    if (job.status && job.status !== "pending" && job.status !== "queued") { console.log("skip: already handled, status", job.status); return; }
 
     try {
+      const reason = await serverGuard(job);
+      if (reason) { console.log("guard skipped:", reason); await snap.ref.update({ status: "skipped", reason, handledAt: Date.now() }); return; }
       const out = await placeElevenLabsCall(job);
       await db.collection("call_history").add({
         number: digits(job.number), party: job.party || "", trigger: job.trigger || "",
         ts: Date.now(), dayIST: istDay(), conversationId: out.conversation_id || "", callSid: out.callSid || "",
       });
       await snap.ref.update({ status: "sent", conversationId: out.conversation_id || "", handledAt: Date.now() });
+      console.log("call SENT to", digits(job.number), "conversation", out.conversation_id || "");
     } catch (err) {
-      await snap.ref.update({ status: "failed", reason: String(err && err.message || err).slice(0, 300), handledAt: Date.now() });
+      const msg = String(err && err.message || err).slice(0, 400);
+      console.error("call FAILED:", msg);
+      await snap.ref.update({ status: "failed", reason: msg, handledAt: Date.now() });
     }
   }
 );
