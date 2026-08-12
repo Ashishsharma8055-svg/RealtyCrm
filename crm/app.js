@@ -206,9 +206,27 @@ const META = {
   assistant: ["AI Copilot", "🔑 AI key", () => openAiConnect()],
 };
 let active = "dash";
+const NAV_MAP = Object.fromEntries(NAV.map((n) => [n[0], n]));
+// Sidebar layout: plain keys render as links; a {group} renders as a collapsible section.
+const NAV_LAYOUT = [
+  "dash",
+  { group: "Database", icon: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>', items: ["leads", "projects", "inventory"] },
+  "pipeline", "digital", "followups", "calendar", "brokers", "customers", "testimonials", "reports", "assistant",
+];
+function navLinkHtml(k) {
+  const n = NAV_MAP[k]; if (!n) return "";
+  const [key, label, path] = n;
+  return `<a class="${active === key ? "active" : ""}" data-nav="${key}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${path}</svg><span>${label}</span></a>`;
+}
 function renderNav() {
-  document.getElementById("nav").innerHTML = NAV.map(([k, label, path]) =>
-    `<a class="${active === k ? "active" : ""}" data-nav="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${path}</svg><span>${label}</span></a>`).join("");
+  document.getElementById("nav").innerHTML = NAV_LAYOUT.map((item) => {
+    if (typeof item === "string") return navLinkHtml(item);
+    const open = item.items.includes(active);
+    return `<details class="nav-group"${open ? " open" : ""}>
+      <summary class="nav-group-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${item.icon}</svg><span>${item.group}</span><svg class="nav-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></summary>
+      <div class="nav-group-body">${item.items.map(navLinkHtml).join("")}</div>
+    </details>`;
+  }).join("");
 }
 function subFor(k) {
   const b = bucketFollowups();
@@ -625,6 +643,18 @@ ${aiCrmContext()}`;
   }
 }
 
+// Dashboard "Upcoming" follow-up filter: All / Tomorrow / This week (next 7 days).
+function bindDashFollowups() {
+  const chips = document.getElementById("fuUpChips"), list = document.getElementById("fuUpList"), cnt = document.getElementById("fuUpCount");
+  if (!chips || !list) return;
+  const up = bucketFollowups().upcoming;
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const iso = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  const tmrS = iso(new Date(d0.getTime() + 864e5)), wkEndS = iso(new Date(d0.getTime() + 7 * 864e5));
+  const filt = (mode) => up.filter((f) => { const d = String(f.at).slice(0, 10); if (mode === "tomorrow") return d === tmrS; if (mode === "week") return d >= tmrS && d <= wkEndS; return true; });
+  const render = (mode) => { const arr = filt(mode); if (cnt) cnt.textContent = arr.length; list.innerHTML = arr.length ? arr.slice(0, 6).map(fuItemSmall).join("") : `<div class="fu-none">None</div>`; };
+  chips.querySelectorAll("[data-fuup]").forEach((b) => (b.onclick = () => { chips.querySelectorAll("[data-fuup]").forEach((x) => x.classList.remove("on")); b.classList.add("on"); render(b.getAttribute("data-fuup")); }));
+}
 function viewDash() {
   const L = DB.leads;
   const active_ = L.filter((l) => l.status === "Active").length;
@@ -708,7 +738,15 @@ function viewDash() {
     <div class="section-title" style="display:flex;justify-content:space-between;">Follow-ups at a glance <a class="link" data-nav="followups">Open full board ›</a></div>
     <div class="fu-cols">
       ${fuMini("Today", bk.today, "amber")}
-      ${fuMini("Upcoming", bk.upcoming, "blue")}
+      <div class="fu-cat">
+        <div class="fu-cat-head"><span class="fu-cat-title">Upcoming</span><span class="fu-count blue" id="fuUpCount">${bk.upcoming.length}</span></div>
+        <div class="fu-chips" id="fuUpChips">
+          <button type="button" class="fu-chip on" data-fuup="all">All</button>
+          <button type="button" class="fu-chip" data-fuup="tomorrow">Tomorrow</button>
+          <button type="button" class="fu-chip" data-fuup="week">This week</button>
+        </div>
+        <div id="fuUpList">${bk.upcoming.length ? bk.upcoming.slice(0, 4).map(fuItemSmall).join("") : `<div class="fu-none">None</div>`}</div>
+      </div>
       ${fuMini("Missed", bk.missed, "red")}
     </div>
   </div>
@@ -909,23 +947,32 @@ function formatGcal(kind, r) {
     const num = firstNum(r.mobile1 || r.mobile);
     return { title: `CL ${r.name || ""}${num ? " " + num : ""}`.trim(), num };
   }
-  const et = r.enquiry_type || "CL", cust = r.customer_name || "", cmob = r.customer_mobile || "";
+  // Lead — title + calendar notes formatted per enquiry type (Ashish's spec).
+  const et = r.enquiry_type || "CL";
+  const cust = r.customer_name || "", cmob = r.customer_mobile || "";
+  const bname = r.source_name || "", bfirm = r.source_firm || "", bmob = r.source_mobile || "";
+  const proj = (r.projects_shared || []).filter(Boolean).join(", ");
+  const ln = (label, val) => (val ? `${label}: ${val}` : "");
+  const pair = (a, b) => [a, b].filter(Boolean).join(" · ");
   if (et === "CP+CL") {
-    const num = cmob || r.source_mobile || "";
-    return { title: `CP+CL ${r.source_name || ""} + ${cust}${num ? " " + num : ""}`.trim(), num };
+    const desc = [ln("Project", proj), ln("Broker Firm", bfirm), ln("Broker", pair(bname, bmob)), ln("Customer", pair(cust, cmob))].filter(Boolean).join("\n");
+    return { title: `CP+CL ${bname}${cust ? " + " + cust : ""}`.trim(), num: cmob || bmob, desc };
   }
   if (et === "CP Details Only" || et === "CP") {
-    const num = r.source_mobile || "";
-    return { title: `CP ${r.source_name || ""}${r.source_firm ? " · " + r.source_firm : ""}${num ? " " + num : ""}`.trim(), num };
+    const desc = ln("Mobile", bmob);
+    return { title: `CP ${bname}${bfirm ? " · " + bfirm : ""}`.trim(), num: bmob, desc };
   }
-  return { title: `CL ${cust}${cmob ? " " + cmob : ""}`.trim(), num: cmob };
+  // CL (and default)
+  const desc = [ln("Project", proj), ln("Customer", pair(cust, cmob))].filter(Boolean).join("\n");
+  return { title: `CL ${cust}`.trim(), num: cmob, desc };
 }
 function gcalMaybeInsert(kind, row) {
   if (!row || !gcalEnabled() || !gcalConnected()) return;
   const live = kind === "broker" ? (brokerById(row.id) || row) : (kind === "customer" ? ((DB.customers.find((c) => c.id === row.id)) || row) : (leadById(row.id) || row));
   const f = formatGcal(kind, live);
-  // Number in the notes too — iOS/iPhone auto-detects it and lets you tap to dial.
-  const desc = [f.num ? "📞 " + f.num : "", live.requirement ? "Requirement: " + live.requirement : "", live.stage ? "Stage: " + live.stage : ""].filter(Boolean).join("\n");
+  // Leads carry a per-type formatted note (f.desc). Brokers/customers keep the generic note.
+  const desc = (f.desc != null) ? f.desc
+    : [f.num ? "📞 " + f.num : "", live.requirement ? "Requirement: " + live.requirement : "", live.stage ? "Stage: " + live.stage : ""].filter(Boolean).join("\n");
   if (live.followup_at) gcalRun(() => gcalUpsertEvent(kind, live, f.title, desc));
   else if (live.gcal_event_id) gcalRun(() => gcalDeleteEvent(live));
 }
@@ -1889,7 +1936,80 @@ function reportControls() {
     <div class="rep-ctrl-group rep-ctrl-actions"><button class="btn outline sm" id="rExcel">Export Excel</button><button class="btn primary sm" id="rPrint">Print / PDF</button></div>
   </div></div>`;
 }
-function viewReports() { return `${reportControls()}${reportTabs()}<div id="reportBody">${reportBodyHtml()}</div>`; }
+// ---- AI Report Builder (quick + deep dive) ----
+// Tiny, safe Markdown → HTML for the AI output (headings, bold, lists, paragraphs).
+function mdToHtml(md) {
+  const e2 = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = (t) => e2(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<em>$1</em>").replace(/`(.+?)`/g, "<code>$1</code>");
+  let html = "", inUl = false, inOl = false;
+  const closeLists = () => { if (inUl) { html += "</ul>"; inUl = false; } if (inOl) { html += "</ol>"; inOl = false; } };
+  String(md || "").split("\n").forEach((raw) => {
+    const t = raw.trim(); if (!t) { closeLists(); return; }
+    let m;
+    if ((m = t.match(/^(#{1,6})\s+(.*)/))) { closeLists(); const lvl = Math.min(m[1].length + 2, 6); html += `<h${lvl} class="air-h">${inline(m[2])}</h${lvl}>`; return; }
+    if ((m = t.match(/^[-*•]\s+(.*)/))) { if (!inUl) { closeLists(); html += "<ul>"; inUl = true; } html += `<li>${inline(m[1])}</li>`; return; }
+    if ((m = t.match(/^\d+[.)]\s+(.*)/))) { if (!inOl) { closeLists(); html += "<ol>"; inOl = true; } html += `<li>${inline(m[1])}</li>`; return; }
+    closeLists(); html += `<p>${inline(t)}</p>`;
+  });
+  closeLists(); return html;
+}
+// Compact, factual snapshot of the currently-filtered report dataset for the AI.
+function aiReportContext() {
+  const L = reportLeads(), Bk = reportBrokersSet(), Cu = reportCustomersSet();
+  const n = L.length, booked = L.filter((l) => l.status === "Booked").length, activeN = L.filter((l) => l.status === "Active").length, inactive = L.filter((l) => l.status === "Inactive").length;
+  const conv = n ? Math.round((booked / n) * 100) : 0;
+  const dist = (arr, keys, f) => keys.map((k) => `${k}:${arr.filter((x) => f(x) === k).length}`).join(", ");
+  const projCount = {}; L.forEach((l) => (l.projects_shared || []).forEach((p) => (projCount[p] = (projCount[p] || 0) + 1)));
+  const topProj = Object.entries(projCount).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([p, c]) => `${p} (${c})`).join(", ") || "none";
+  const cpCount = {}; L.forEach((l) => { if (l.source_type === "CP" && l.source_name) cpCount[l.source_name] = (cpCount[l.source_name] || 0) + 1; });
+  const topCP = Object.entries(cpCount).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([p, c]) => `${p} (${c})`).join(", ") || "none";
+  const period = (reportOpts.from || reportOpts.to) ? `${reportOpts.from || "start"} to ${reportOpts.to || "today"}` : "all time";
+  const sample = L.slice(0, 30).map((l) => `- ${l.customer_name || l.lead_number} | ${l.requirement || "?"} | ${l.budget || "?"} | ${l.stage || "?"}/${l.status || "?"} | ${l.rating || "?"} | proj ${(l.projects_shared || []).join("/") || "-"} | ${l.source_type || "-"}:${l.source_name || "-"} | "${(l.remark || "").slice(0, 80)}"`).join("\n");
+  return `Period: ${period}
+Totals: ${n} enquiries · ${activeN} active · ${booked} booked · ${inactive} inactive · conversion ${conv}%
+By stage: ${dist(L, STAGES, (l) => l.stage)}
+By requirement: ${dist(L, REQUIREMENTS, (l) => l.requirement)}
+By budget: ${dist(L, BUDGETS, (l) => l.budget)}
+By source: ${dist(L, ["CP", "CL", "Reference"], (l) => l.source_type)}
+By rating: ${dist(L, RATINGS, (l) => l.rating)}
+Top projects (by shares): ${topProj}
+Top channel partners (by leads): ${topCP}
+Brokers: ${Bk.length} total · ${Bk.filter((b) => b.connect === "Live").length} live · ${Bk.filter((b) => leadCountForBroker(b.name) > 0).length} active (brought a client)
+Customers: ${Cu.length} total · ${Cu.filter((c) => c.category === "Investor").length} investors · ${Cu.filter((c) => c.category === "EndUser").length} end-users
+Enquiry sample (up to 30):
+${sample}`;
+}
+let _aiRepBusy = false;
+async function buildAiReport(mode) {
+  const out = document.getElementById("aiReportOut"); if (!out) return;
+  if (!aiReady()) { openAiConnect(() => buildAiReport(mode)); return; }
+  if (_aiRepBusy) return; _aiRepBusy = true;
+  const focus = (document.getElementById("aiReportFocus")?.value || "").trim();
+  out.style.display = ""; out.innerHTML = `<div class="air-loading"><span class="ai-orb ai-orb-sm"></span> ${mode === "deep" ? "Analysing your pipeline in depth…" : "Building your quick report…"}</div>`;
+  const shape = mode === "deep"
+    ? `Write a DEEP-DIVE executive report. Use these ## section headings in order: Executive Summary; Pipeline Health; Channel & Source Performance; Project Demand; Customer Mix; Risks & Bottlenecks; Recommended Actions (as a numbered, specific list). Quote the real numbers, surface trends and anomalies, and be candid and analytical.`
+    : `Write a QUICK report: a 3-4 sentence **Executive Summary**, then a short "## Key Numbers" bullet list, then "## Top 3 Actions" as a numbered list. Keep it tight and scannable.`;
+  const prompt = `You are a sharp real-estate sales analyst for Ashish Sharma (Coffee & Deals, BPTP Gurugram). Analyse the CRM data below and produce a professional, decision-ready report in Markdown (## headings, **bold**, bullet and numbered lists). Base every claim ONLY on the data provided; if something can't be known from it, say so. Be specific with numbers and names — no vague filler.${focus ? `\n\nThe user specifically wants this report to focus on: ${focus}` : ""}\n\n${shape}\n\nDATA:\n${aiReportContext()}`;
+  try {
+    const text = await aiGenerate(prompt);
+    out.innerHTML = `<div class="air-doc"><div class="air-dochead"><span class="ai-orb ai-orb-sm"></span><b>AI ${mode === "deep" ? "Deep-Dive" : "Quick"} Report</b><span class="air-when">${now()}</span><span class="air-tools"><button class="btn ghost sm" id="aiRepCopy">📋 Copy</button><button class="btn ghost sm" id="aiRepPrint">🖨 Print</button></span></div><div class="air-body">${mdToHtml(text)}</div></div>`;
+    const cp = document.getElementById("aiRepCopy"); if (cp) cp.onclick = () => { try { navigator.clipboard.writeText(text); } catch (e) {} toast("Report copied ✓"); };
+    const pr = document.getElementById("aiRepPrint"); if (pr) pr.onclick = () => window.print();
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    out.innerHTML = `<div class="ai-err">${/no-key/.test(msg) ? "Connect an AI key first (🔑 AI key on the AI Copilot page)." : esc(msg)}</div>`;
+  }
+  _aiRepBusy = false;
+}
+function aiReportCard() {
+  return `<div class="card pad air-card">
+    <div class="air-head"><span class="ai-orb"></span><div class="air-head-t"><b>AI Report Builder</b><div class="muted" style="font-size:11px">Turn the numbers below into a written, professional report</div></div>
+      <div class="air-actions"><button type="button" class="btn outline sm" id="aiRepQuick">⚡ Quick report</button><button type="button" class="btn primary sm" id="aiRepDeep">🔬 Deep dive</button></div></div>
+    <input id="aiReportFocus" class="search air-focus" autocomplete="off" placeholder="Optional focus, e.g. “why aren’t my hot leads converting?” or “Amstoria demand vs Downtown”" />
+    <div id="aiReportOut" class="air-out" style="display:none"></div>
+  </div>`;
+}
+function viewReports() { return `${aiReportCard()}${reportControls()}${reportTabs()}<div id="reportBody">${reportBodyHtml()}</div>`; }
 function bindReports() {
   const rr = () => renderReportBody();
   const bindIn = (id, key) => { const el = document.getElementById(id); if (el) el.addEventListener("input", () => { reportOpts[key] = el.value; rr(); }); };
@@ -1898,6 +2018,8 @@ function bindReports() {
   const pr = document.getElementById("rPrint"); if (pr) pr.onclick = () => { if (typeof window !== "undefined") window.print(); };
   const ex = document.getElementById("rExcel"); if (ex) ex.onclick = exportExcel;
   document.querySelectorAll("[data-rtab]").forEach((b) => (b.onclick = () => { reportView = b.getAttribute("data-rtab"); go("reports"); }));
+  const aq = document.getElementById("aiRepQuick"); if (aq) aq.onclick = () => buildAiReport("quick");
+  const ad = document.getElementById("aiRepDeep"); if (ad) ad.onclick = () => buildAiReport("deep");
   if (reportView === "match") bindMatch();
 }
 function download(blob, name) { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
@@ -2019,7 +2141,7 @@ function bindView(k) {
   if (k === "leads") { leadRowsHtml(); ["lq", "lStatus", "lRating"].forEach((id) => document.getElementById(id).addEventListener("input", leadRowsHtml)); const ld = document.getElementById("lDel"); if (ld) ld.onclick = bulkDeleteLeads; }
   if (k === "pipeline") { bindPipeline(); }
   if (k === "assistant") { bindAssistant(); }
-  if (k === "dash") { updateDashDigi(); bindDashBrief(); loadDashBrief(); }
+  if (k === "dash") { updateDashDigi(); bindDashBrief(); loadDashBrief(); bindDashFollowups(); }
   if (k === "brokers") { brokerRowsHtml(); ["bq", "bType", "bGrade"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", brokerRowsHtml); }); const w = (id, fn) => { const e = document.getElementById(id); if (e) e.onclick = fn; }; w("bDel", bulkDeleteBrokers); w("bTpl", brokerTemplate); w("bImp", brokerImport); w("bExp", brokerExport); w("bGrpFirm", () => setBrokerGroup("firm")); w("bGrpList", () => setBrokerGroup("list")); }
   if (k === "customers") { custRowsHtml(); ["cq", "cCat", "cFut", "cRate"].forEach((id) => { const el = document.getElementById(id); if (el) el.addEventListener("input", custRowsHtml); }); }
   if (k === "projects") { populateProjectsWeb(); }

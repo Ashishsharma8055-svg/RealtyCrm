@@ -1020,3 +1020,62 @@ tbody tr:hover { background: var(--slate-50); }
 .lf-sec { transition:box-shadow .2s, transform .2s; }
 .lf-sec:hover { box-shadow:0 8px 26px rgba(79,70,229,.10); }
 [data-theme="dark"] .lf-sec:hover { box-shadow:0 8px 26px rgba(0,0,0,.35); }
+
+/* ===== Sidebar "Database" collapsible group ===== */
+.nav-group { border:none; margin:2px 0; }
+.nav-group-h { list-style:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:var(--radius); font-size:14px; font-weight:600; color:#cbd5e1; transition:background .15s; }
+.nav-group-h::-webkit-details-marker { display:none; }
+.nav-group-h:hover { background:rgba(255,255,255,.06); }
+.nav-group-h svg { width:18px; height:18px; }
+.nav-group-h .nav-chev { width:15px; height:15px; margin-left:auto; opacity:.6; transition:transform .2s; }
+.nav-group[open] .nav-chev { transform:rotate(180deg); }
+.nav-group-body { display:flex; flex-direction:column; gap:3px; margin:3px 0 3px 14px; padding-left:10px; border-left:1.5px solid rgba(255,255,255,.10); }
+.nav-group-body a { padding:8px 12px; font-size:13.5px; }
+
+/* ===== Upcoming follow-up filter chips ===== */
+.fu-chips { display:flex; gap:6px; margin:6px 0 10px; flex-wrap:wrap; }
+.fu-chip { border:1px solid var(--slate-200); background:var(--panel); color:var(--slate-500); font-size:11px; font-weight:600; padding:4px 11px; border-radius:999px; cursor:pointer; font-family:inherit; transition:all .14s; }
+.fu-chip:hover { border-color:#93c5fd; color:#2563eb; }
+.fu-chip.on { background:#2563eb; border-color:#2563eb; color:#fff; box-shadow:0 3px 9px rgba(37,99,235,.3); }
+[data-theme="dark"] .fu-chip { background:#131c31; border-color:#2b3a55; color:#8ea0bc; }
+[data-theme="dark"] .fu-chip.on { background:#2563eb; border-color:#2563eb; color:#fff; }
+
+/* ===== AI Report Builder ===== */
+.air-card { background:radial-gradient(120% 150% at 6% 0%, #f5f3ff 0%, var(--panel) 55%); border:1px solid #e5e0ff; }
+[data-theme="dark"] .air-card { background:radial-gradient(120% 150% at 6% 0%, #1a1533 0%, #111b30 60%); border-color:#2f2a55; }
+.air-head { display:flex; align-items:center; gap:12px; }
+.air-head-t { flex:1; min-width:0; }
+.air-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.air-focus { width:100%; margin-top:12px; }
+.air-out { margin-top:14px; }
+.air-loading { display:flex; align-items:center; gap:8px; color:var(--slate-500); font-size:13px; padding:10px 2px; }
+.air-doc { border:1px solid var(--slate-200); border-radius:14px; overflow:hidden; background:var(--panel); box-shadow:0 6px 20px rgba(15,23,42,.06); }
+.air-dochead { display:flex; align-items:center; gap:9px; padding:12px 16px; border-bottom:1px solid var(--slate-200); background:linear-gradient(120deg,#4f46e5,#7c3aed); color:#fff; font-size:13.5px; }
+.air-dochead .air-when { font-size:11px; opacity:.85; margin-left:4px; }
+.air-dochead .air-tools { margin-left:auto; display:flex; gap:6px; }
+.air-dochead .air-tools .btn { color:#fff; border-color:rgba(255,255,255,.35); }
+.air-body { padding:20px 22px; font-size:14px; line-height:1.7; color:var(--slate-800); }
+.air-body .air-h { margin:18px 0 8px; font-weight:800; letter-spacing:-.01em; color:var(--navy); }
+.air-body h3.air-h { font-size:16px; padding-bottom:6px; border-bottom:2px solid #eef2ff; }
+.air-body h4.air-h { font-size:14px; color:var(--indigo); }
+.air-body p { margin:8px 0; }
+.air-body ul, .air-body ol { margin:8px 0 8px 4px; padding-left:20px; }
+.air-body li { margin:4px 0; }
+.air-body code { background:var(--slate-100); padding:1px 6px; border-radius:5px; font-size:12.5px; }
+[data-theme="dark"] .air-doc { background:#111b30; border-color:#26324c; }
+[data-theme="dark"] .air-body { color:#dbe3f0; }
+[data-theme="dark"] .air-body .air-h { color:#eaf0fa; }
+[data-theme="dark"] .air-body h3.air-h { border-color:#2b3a55; }
+[data-theme="dark"] .air-body h4.air-h { color:#a5b4fc; }
+[data-theme="dark"] .air-body code { background:#1b2740; }
+
+/* ===== Enquiry form — creative buttons & modern touches ===== */
+/* segmented, tactile choice chips */
+.pillset .pill { position:relative; overflow:hidden; }
+.pillset .pill.on::after { content:"✓"; margin-left:7px; font-weight:800; }
+.pillset .pill.on { letter-spacing:.01em; }
+/* gradient primary action button in any modal footer (Save Enquiry etc.) */
+.modal-foot .btn.primary { background:linear-gradient(135deg,#4f46e5,#7c3aed); border:none; box-shadow:0 8px 20px rgba(99,70,229,.35); font-weight:700; letter-spacing:.01em; transition:transform .15s, box-shadow .15s; }
+.modal-foot .btn.primary:hover { transform:translateY(-1px); box-shadow:0 12px 26px rgba(99,70,229,.45); }
+.modal-foot .btn.primary:active { transform:translateY(0) scale(.99); }
+.modal-foot .btn.outline { border-radius:11px; font-weight:600; }
