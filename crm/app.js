@@ -209,9 +209,9 @@ let active = "dash";
 const NAV_MAP = Object.fromEntries(NAV.map((n) => [n[0], n]));
 // Sidebar layout: plain keys render as links; a {group} renders as a collapsible section.
 const NAV_LAYOUT = [
-  "dash",
-  { group: "Database", icon: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>', items: ["leads", "projects", "inventory"] },
-  "pipeline", "digital", "followups", "calendar", "brokers", "customers", "testimonials", "reports", "assistant",
+  "dash", "pipeline", "digital", "followups", "calendar", "reports",
+  { group: "Database", icon: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>', items: ["leads", "projects", "inventory", "customers", "brokers", "testimonials"] },
+  "assistant",
 ];
 function navLinkHtml(k) {
   const n = NAV_MAP[k]; if (!n) return "";
