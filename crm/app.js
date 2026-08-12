@@ -443,29 +443,40 @@ function openAiConnect(after) {
 }
 // Build the prompt for a per-lead message draft.
 function leadDraftPrompt(l, recipient, channel, intent) {
-  const proj = (l.projects_shared || []).filter(Boolean).join(", ");
+  const projArr = (l.projects_shared || []).filter(Boolean);
+  const proj = projArr.join(", ");
+  const units = l.units || {}, costing = l.costing || {};
+  // Rich project detail so the message can be built AROUND the actual project(s).
+  const projDetail = projArr.map((n) => n + (units[n] ? ` (unit ${units[n]})` : "") + (costing[n] ? ` — ${costing[n]}` : "")).join("; ");
   const facts = [
     `Customer name: ${l.customer_name || "the customer"}`,
-    l.requirement ? `Requirement: ${l.requirement}` : "",
+    l.requirement ? `Requirement type: ${l.requirement}` : "",
     l.budget ? `Budget: ${l.budget}` : "",
-    proj ? `Project(s) shared: ${proj}` : "",
-    l.units && Object.keys(l.units).length ? `Unit(s) discussed: ${Object.values(l.units).join(", ")}` : "",
+    projDetail ? `Project(s) under discussion: ${projDetail}` : "",
     l.stage ? `Current stage: ${l.stage}` : "",
-    l.rating ? `Lead rating: ${l.rating}` : "",
+    l.rating ? `Lead rating (internal, do NOT mention): ${l.rating}` : "",
     l.customer_city ? `City: ${l.customer_city}` : "",
     l.customer_profession ? `Profession: ${l.customer_profession}` : "",
     l.source_name ? `Referring channel partner: ${l.source_name}${l.source_firm ? " (" + l.source_firm + ")" : ""}` : "",
     l.followup_at ? `Next follow-up: ${l.followup_at}${l.followup_kind ? " (" + l.followup_kind + ")" : ""}` : "",
-    l.remark ? `Latest remark / notes: ${l.remark}` : "",
   ].filter(Boolean).join("\n");
+  // My private shorthand: the lead remark + my recent activity/journey notes. These are
+  // informal, written fast, and just help me recognise the client and recall the chat.
+  const notes = (DB.activities || [])
+    .filter((a) => a.entity_type === "lead" && a.entity_id === l.id && String(a.remark || "").trim())
+    .sort((a, b) => (b.id || 0) - (a.id || 0)).slice(0, 4)
+    .map((a) => `• ${a.kind || "Note"}: ${a.remark}`);
+  const noteLines = [l.remark ? `• Remark: ${l.remark}` : ""].concat(notes).filter(Boolean).join("\n");
+  const notesBlock = noteLines ? `\n\nMY PRIVATE SHORTHAND NOTES (informal, for my memory only — the recipient must NEVER see them as written). Read them, understand the substance of our past conversation, and reflect it in a polished, professional way. Do NOT quote them, expose slang/typos, or reveal internal tags:\n${noteLines}` : "";
   const who = recipient === "partner" ? "the channel partner who referred this client (a business peer)" : "the customer directly";
   const ch = channel === "email" ? "a short, professional email — begin with a 'Subject:' line" : "a warm, concise WhatsApp message (no subject line)";
   return `You are Ashish Sharma — a trusted BPTP luxury real-estate advisor in Gurugram; personal brand "Coffee & Deals". Write ${ch} to ${who}.
 Purpose: ${intent}.
-Use these real details naturally and accurately — never invent facts, prices or dates:
-${facts}
+${projDetail ? `Build the message AROUND the specific project(s): ${projDetail}. Name the project so it reads tailored, not generic.` : ""}
+Use these real details accurately — never invent facts, prices or dates:
+${facts}${notesBlock}
 
-Style: warm, professional, personal, respectful of their time, never pushy or salesy. Keep it ready-to-send. Sign off simply as "Ashish". Output only the message text.`;
+Style: warm, professional, personal, concise, respectful of their time, never pushy or salesy. Turn my rough notes into refined, professional phrasing. Keep it ready-to-send. Sign off simply as "Ashish". Output only the message text${channel === "email" ? " including the Subject: line" : ""}.`;
 }
 function openLeadDraft(leadId) {
   const l = leadById(leadId); if (!l) return;
@@ -2099,8 +2110,9 @@ function openLeadForm(existing) {
         <div class="lf-sec-head lf-teal">${IC.link}<span>Source</span><span class="fs-hint">pick a CP to auto-fill, or type a new name to create one</span></div>
         <div class="lf-sec-body"><div class="form-grid">
           ${pillField("Source Type", "f_source_type", ["CP", "CL", "Reference"], l.source_type, true)}
-          <div class="field"><label>Source / CP Name</label><input id="f_source_name" list="cpList" autocomplete="off" value="${esc(l.source_name || "")}" placeholder="Type or pick a CP" /><datalist id="cpList">${DB.brokers.map((b) => `<option value="${esc(b.name)}"></option>`).join("")}</datalist></div>
-          ${field("Source Mobile", "f_source_mobile", l.source_mobile)}${field("CP Firm", "f_source_firm", l.source_firm)}
+          <div class="field"><label>Source / CP Name</label><input id="f_source_name" list="cpList" autocomplete="off" value="${esc(l.source_name || "")}" placeholder="Type or pick a CP" /><datalist id="cpList">${DB.brokers.map((b) => `<option value="${esc(b.name)}">${esc(b.firm || "")}</option>`).join("")}</datalist></div>
+          <div class="field"><label>Source Mobile</label><input id="f_source_mobile" list="cpMobList" autocomplete="off" inputmode="tel" value="${esc(l.source_mobile || "")}" placeholder="Type or pick a number" /><datalist id="cpMobList">${DB.brokers.filter((b) => b.mobiles).map((b) => `<option value="${esc(String(b.mobiles).split(",")[0].trim())}">${esc(b.name)}${b.firm ? " · " + esc(b.firm) : ""}</option>`).join("")}</datalist></div>
+          <div class="field"><label>CP Firm</label><input id="f_source_firm" list="cpFirmList" autocomplete="off" value="${esc(l.source_firm || "")}" placeholder="Type or pick a firm" /><datalist id="cpFirmList">${uniqueFirms().map((fm) => `<option value="${esc(fm)}"></option>`).join("")}</datalist></div>
         </div></div>
       </div>
       <div class="lf-sec" id="lf-customer-sec">
@@ -2131,16 +2143,31 @@ function openLeadForm(existing) {
     <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="saveLead">Save Enquiry</button></div>`, true);
   document.querySelectorAll("[data-proj]").forEach((cb) => cb.addEventListener("change", (e) => { const name = e.target.getAttribute("data-proj"); const box = document.querySelector(`[data-projinputs="${CSS.escape(name)}"]`); if (box) box.style.display = e.target.checked ? "" : "none"; }));
   loadLeadFormUnits();
-  const cpIn = document.getElementById("f_source_name");
-  if (cpIn) cpIn.addEventListener("change", () => {
-    const b = DB.brokers.find((x) => (x.name || "").trim().toLowerCase() === cpIn.value.trim().toLowerCase());
-    if (b) {
-      const mob = document.getElementById("f_source_mobile"), firm = document.getElementById("f_source_firm");
-      if (mob) mob.value = b.mobiles ? String(b.mobiles).split(",")[0].trim() : "";
-      if (firm) firm.value = b.firm || "";
-      toast("Auto-filled from CP: " + b.name);
-    }
-  });
+  // ---- Smart CP autofill: match by Name, Mobile, or Firm and cross-fill the rest.
+  // Matching is EXACT (case-insensitive) so typing a brand-new CP that merely resembles
+  // an existing one never overwrites — you only get filled when you pick/enter a real match.
+  const cpName = document.getElementById("f_source_name"),
+        cpMob = document.getElementById("f_source_mobile"),
+        cpFirm = document.getElementById("f_source_firm");
+  const brNorm = (s) => String(s || "").trim().toLowerCase();
+  const brDigits = (s) => String(s || "").replace(/\D/g, "");
+  const brFirstMob = (b) => (b && b.mobiles) ? String(b.mobiles).split(",")[0].trim() : "";
+  const brokerByName = (v) => { const k = brNorm(v); return k ? DB.brokers.find((b) => brNorm(b.name) === k) : null; };
+  const brokerByMobile = (v) => { const d = brDigits(v); if (d.length < 6) return null; return DB.brokers.find((b) => String(b.mobiles || "").split(",").some((m) => brDigits(m) === d)) || null; };
+  const brokersByFirm = (v) => { const k = brNorm(v); return k ? DB.brokers.filter((b) => brNorm(b.firm) === k) : []; };
+  const setV = (el, v) => { if (el && v != null) el.value = v; };
+  let _lastCp = "";
+  const fillFrom = (b, via) => {
+    if (!b) return;
+    if (via !== "name") setV(cpName, b.name || "");
+    if (via !== "firm") setV(cpFirm, b.firm || "");
+    if (via !== "mobile") setV(cpMob, brFirstMob(b));
+    if (_lastCp !== b.name) { toast("Auto-filled CP: " + b.name); _lastCp = b.name; }
+  };
+  const wire = (el, finder, via) => { if (!el) return; const h = () => { const b = finder(el.value); if (b) fillFrom(b, via); }; el.addEventListener("change", h); el.addEventListener("input", h); };
+  wire(cpName, brokerByName, "name");
+  wire(cpMob, brokerByMobile, "mobile");
+  if (cpFirm) { const h = () => { const list = brokersByFirm(cpFirm.value); if (list.length === 1) fillFrom(list[0], "firm"); }; cpFirm.addEventListener("change", h); cpFirm.addEventListener("input", h); }
   const custIn = document.getElementById("f_customer_name");
   if (custIn) custIn.addEventListener("change", () => {
     const c = DB.customers.find((x) => (x.name || "").trim().toLowerCase() === custIn.value.trim().toLowerCase());
@@ -2387,8 +2414,8 @@ const IC = {
   building: SVGI('<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h1M14 7h1M9 11h1M14 11h1M9 15h1M14 15h1"/>'),
   target: SVGI('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>'),
 };
-function heroCard(icon, label, value, color) {
-  return `<div class="pf-hero-card h-${color}"><div class="pf-hc-ic">${icon}</div><div class="pf-hc-k">${label}</div><div class="pf-hc-v">${value}</div></div>`;
+function heroCard(icon, label, value, color, sub) {
+  return `<div class="pf-hero-card h-${color}"><div class="pf-hc-ic">${icon}</div><div class="pf-hc-k">${label}</div><div class="pf-hc-v">${value}</div>${sub ? `<div class="pf-hc-sub">${sub}</div>` : ""}</div>`;
 }
 // One-tap pill row for the lead profile (Stage / Rating / Status), updates + saves instantly.
 function pfQuickRow(label, field, opts, cur, leadId, colors) {
@@ -2447,7 +2474,12 @@ function openLeadProfile(id) {
     <div class="pf-body">
       <div class="pf-hero">
         ${heroCard(IC.money, "Budget", esc(l.budget) || "—", "indigo")}
-        ${heroCard(IC.home, "Requirement", esc(l.requirement) || "—", "teal")}
+        ${(() => {
+          const pj = (l.projects_shared || []).filter(Boolean);
+          const head = pj.length ? esc(pj[0]) + (pj.length > 1 ? ` <span class="pf-hc-more">+${pj.length - 1}</span>` : "") : (esc(l.requirement) || "—");
+          const sub = pj.length ? (esc(l.requirement) || "") : "";
+          return heroCard(IC.home, "Requirement", head, "teal", sub);
+        })()}
         ${heroCard(IC.flag, "Stage", esc(l.stage) || "—", "amber")}
         ${heroCard(IC.clock, "Next Follow-up", l.followup_at ? fmtDate(l.followup_at) + (l.followup_kind ? ` · ${esc(l.followup_kind)}` : "") : "Not set", l.followup_at ? "rose" : "green")}
       </div>
