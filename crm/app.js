@@ -798,11 +798,34 @@ function viewFollowups() {
     } else body = arr.map(fuItemFull).join("");
     return `<div class="card pad fu-column"><div class="fu-col-head"><span class="fu-cat-title">${title}</span><span class="fu-count ${tone}">${arr.length}</span></div>${body}</div>`;
   };
+  const upBody = bk.upcoming.length ? bk.upcoming.map(fuItemFull).join("") : `<div class="empty" style="padding:24px 0">No upcoming follow-ups.</div>`;
+  const upCol = `<div class="card pad fu-column">
+    <div class="fu-col-head"><span class="fu-cat-title">Upcoming</span><span class="fu-count blue" id="fuBoardUpCount">${bk.upcoming.length}</span></div>
+    <div class="fu-chips" id="fuBoardUpChips">
+      <button type="button" class="fu-chip on" data-fubup="all">All</button>
+      <button type="button" class="fu-chip" data-fubup="tomorrow">Tomorrow</button>
+      <button type="button" class="fu-chip" data-fubup="week">This week</button>
+      <button type="button" class="fu-chip" data-fubup="month">This month</button>
+    </div>
+    <div id="fuBoardUpList">${upBody}</div>
+  </div>`;
   return `<div class="fu-board">
     ${col("Today", bk.today, "amber", "Nothing scheduled today.", true)}
-    ${col("Upcoming", bk.upcoming, "blue", "No upcoming follow-ups.")}
+    ${upCol}
     ${col("Missed / Overdue", bk.missed, "red", "Nothing overdue. Great job.")}
   </div>`;
+}
+// Upcoming filter on the full Follow-ups board: All / Tomorrow / This week / This month.
+function bindFollowupsUpcoming() {
+  const chips = document.getElementById("fuBoardUpChips"), list = document.getElementById("fuBoardUpList"), cnt = document.getElementById("fuBoardUpCount");
+  if (!chips || !list) return;
+  const up = bucketFollowups().upcoming;
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const iso = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+  const tmrS = iso(new Date(d0.getTime() + 864e5)), wkEndS = iso(new Date(d0.getTime() + 7 * 864e5)), monEndS = iso(new Date(d0.getFullYear(), d0.getMonth() + 1, 0));
+  const filt = (mode) => up.filter((f) => { const d = String(f.at).slice(0, 10); if (mode === "tomorrow") return d === tmrS; if (mode === "week") return d >= tmrS && d <= wkEndS; if (mode === "month") return d >= tmrS && d <= monEndS; return true; });
+  const render = (mode) => { const arr = filt(mode); if (cnt) cnt.textContent = arr.length; list.innerHTML = arr.length ? arr.map(fuItemFull).join("") : `<div class="empty" style="padding:24px 0">No upcoming follow-ups in this range.</div>`; };
+  chips.querySelectorAll("[data-fubup]").forEach((b) => (b.onclick = () => { chips.querySelectorAll("[data-fubup]").forEach((x) => x.classList.remove("on")); b.classList.add("on"); render(b.getAttribute("data-fubup")); }));
 }
 function fuItemFull(f) {
   return `<div class="fu-full">
@@ -2149,6 +2172,7 @@ function bindView(k) {
   if (k === "inventory") { populateInventory(); }
   if (k === "testimonials") { populateTestimonials(); }
   if (k === "reports") { bindReports(); }
+  if (k === "followups") { bindFollowupsUpcoming(); }
 }
 
 /* ---------- Modal ---------- */
