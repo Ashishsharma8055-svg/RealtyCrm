@@ -72,11 +72,15 @@ async function placeElevenLabsCall(job) {
     to_number: e164IN(job.number),
     conversation_initiation_client_data: {
       dynamic_variables: {
-        customer_name: job.name || "there",
-        party: job.party || "",
-        trigger: job.trigger || "",
+        message: job.message || "",
+        customer_name: job.customer_name || job.name || "there",
+        broker_name: job.broker_name || "",
+        client_ref: job.client_ref || "your client",
         project: job.project || "",
         meeting_time: job.meeting_time || "",
+        greeting: job.greeting || "",
+        party: job.party || "",
+        trigger: job.trigger || "",
       },
     },
   };
@@ -117,32 +121,44 @@ exports.dialQueuedCall = onDocumentCreated(
   }
 );
 
-// Meeting reminders: runs every morning at 9 AM IST. Reads the CRM state, finds
-// meetings due today/tomorrow with the auto-call toggle on, and queues ONE reminder each.
+// Meeting reminders — runs every morning at 10 AM IST. Rule (Ashish's spec):
+//   remind when a lead is ACTIVE, stage is "Call", the follow-up type is "Site Visit",
+//   and the follow-up date is TODAY. The reminder goes to the CHANNEL PARTNER (CP),
+//   only if that lead has CP auto-calls on and the CP is Live. Fires once per lead/day.
 exports.reminderSweep = onSchedule(
-  { schedule: "0 9 * * *", timeZone: "Asia/Kolkata" },
+  { schedule: "0 10 * * *", timeZone: "Asia/Kolkata" },
   async () => {
     const stateSnap = await db.collection("crm").doc("state").get();
     if (!stateSnap.exists) return;
-    const leads = (stateSnap.data().leads) || [];
-    const now = Date.now(), horizon = now + 24 * 3600000;
+    const state = stateSnap.data() || {};
+    const leads = state.leads || [], brokers = state.brokers || [];
+    const todayIST = istDay();
 
     for (const l of leads) {
-      if (!l.followup_at) continue;
-      const t = Date.parse(String(l.followup_at).replace(" ", "T"));
-      if (isNaN(t) || t < now || t > horizon) continue; // only next 24h
+      if (l.status !== "Active") continue;
+      if (l.stage !== "Call") continue;
+      if (String(l.followup_kind || "").toLowerCase() !== "site visit") continue;
+      if (String(l.followup_at || "").slice(0, 10) !== todayIST) continue;   // meeting is today
+      if (!l.call_broker || !l.source_mobile) continue;                       // CP auto-calls off / no number
+
+      // CP must be Live (not terminated).
+      const num = digits(l.source_mobile);
+      const cp = brokers.find((b) => digits(b.mobiles).includes(num)) || brokers.find((b) => (b.name || "").toLowerCase() === (l.source_name || "").toLowerCase());
+      if (cp && cp.connect !== "Live") continue;
+
+      const key = `${l.id}_broker_reminder_${todayIST}`;
+      const ref = db.collection("reminders_sent").doc(key);
+      if ((await ref.get()).exists) continue;                                 // already reminded today
+      await ref.set({ ts: Date.now() });
 
       const project = (l.projects_shared || [])[0] || "";
-      const meeting_time = String(l.followup_at);
-      const mark = async (party, number, name) => {
-        const key = `${l.id}_${party}_reminder_${istDay()}`;
-        const ref = db.collection("reminders_sent").doc(key);
-        if ((await ref.get()).exists) return;           // already reminded today — never repeat
-        await ref.set({ ts: Date.now() });
-        await db.collection("call_queue").add({ status: "pending", createdAt: Date.now(), party, number, name, leadId: l.id, trigger: "reminder", project, meeting_time });
-      };
-      if (l.call_customer && l.customer_mobile) await mark("customer", l.customer_mobile, l.customer_name);
-      if (l.call_broker && l.source_mobile) await mark("broker", l.source_mobile, l.source_name);
+      const client_ref = l.customer_name || "your client";
+      const message = `Hi ${l.source_name || "there"}, Good Morning. Gentle reminder — you have a meeting scheduled today with ${client_ref} for ${project || "the project"} with Ashish Sharma at B P T P.`;
+      await db.collection("call_queue").add({
+        status: "pending", createdAt: Date.now(), party: "broker", number: num, name: l.source_name || "",
+        broker_name: l.source_name || "", customer_name: l.customer_name || "", client_ref, project,
+        meeting_time: String(l.followup_at), greeting: "Good Morning", trigger: "reminder", leadId: l.id, message,
+      });
     }
   }
 );

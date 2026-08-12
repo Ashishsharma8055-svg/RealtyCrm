@@ -2439,6 +2439,21 @@ function callLog() { if (!DB.calls) DB.calls = []; return DB.calls; }
 function callDnc() { if (!DB.call_dnc) DB.call_dnc = []; return DB.call_dnc; }
 function callDigits(s) { return String(s || "").replace(/\D/g, ""); }
 function istNow() { const n = new Date(); return new Date(n.getTime() + n.getTimezoneOffset() * 60000 + 5.5 * 3600000); }
+function callGreeting() { const h = istNow().getHours(); return h < 12 ? "Good Morning" : h < 17 ? "Good Afternoon" : "Good Evening"; }
+// Facts pulled from a lead for the AI call (passed to ElevenLabs as dynamic variables).
+function callVars(lead) {
+  const project = (lead.projects_shared || []).filter(Boolean)[0] || "";
+  const cust = lead.customer_name || "";
+  return { customer_name: cust, broker_name: lead.source_name || "", project, meeting_time: lead.followup_at || "", greeting: callGreeting(), client_ref: cust || "your client" };
+}
+// The exact sentence the agent speaks first, per trigger (agent's First message = {{message}}).
+function callMessage(trigger, party, v) {
+  const g = v.greeting || "Hello";
+  if (trigger === "enquiry") return `${g} ${v.customer_name || "there"}. Thank you for showing interest with Coffee and Deals. I would love to invite you to visit the site for a detailed discussion — I am sure we will have some good outcomes. This is Ashish Sharma's team from B P T P.`;
+  if (trigger === "visit") return `${g} ${v.customer_name || "there"}. Thank you for your continued interest in our project. As scheduled, your site visit is on ${v.meeting_time || "the planned date"}. I will personally assist you there. Warm regards, Ashish Sharma from B P T P.`;
+  if (trigger === "reminder") return `Hi ${v.broker_name || "there"}, ${g}. Gentle reminder — you have a meeting scheduled today with ${v.client_ref || "your client"} for ${v.project || "the project"} with Ashish Sharma at B P T P.`;
+  return `${g} ${v.customer_name || "there"}. This is a courtesy call from Ashish Sharma's team at Coffee and Deals about ${v.project || "your requirement"}.`;
+}
 // The gatekeeper — returns {ok:true} only if EVERY safety check passes.
 function callGuard(o) {
   const s = callSettings(), num = callDigits(o.number), lead = o.leadId ? leadById(o.leadId) : null;
@@ -2449,6 +2464,7 @@ function callGuard(o) {
   if (o.party === "broker") { const b = DB.brokers.find((x) => callDigits(x.mobiles).includes(num)) || (lead && DB.brokers.find((x) => (x.name || "").toLowerCase() === (lead.source_name || "").toLowerCase())); if (b && b.connect !== "Live") return { ok: false, reason: "Channel partner is not Active (terminated)" }; }
   if (o.party === "customer") { const c = DB.customers.find((x) => [x.mobile1, x.mobile2, x.mobile3].some((m) => callDigits(m) === num)) || (lead && DB.customers.find((x) => (x.name || "").toLowerCase() === (lead.customer_name || "").toLowerCase())); if (c && Number(c.contact_future != null ? c.contact_future : 1) === 0) return { ok: false, reason: "Customer is marked Do-not-contact" }; }
   if (o.trigger !== "manual" && lead) {
+    if (lead.status !== "Active") return { ok: false, reason: "Lead is not Active" };
     if (o.party === "customer" && !lead.call_customer) return { ok: false, reason: "Auto-call to customer is OFF for this lead" };
     if (o.party === "broker" && !lead.call_broker) return { ok: false, reason: "Auto-call to CP is OFF for this lead" };
   }
@@ -2465,7 +2481,7 @@ function callGuard(o) {
 }
 function requestCall(o) {
   const s = callSettings(), g = callGuard(o);
-  const e = { id: "CALL-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: now(), ts_ms: Date.now(), party: o.party, name: o.name || "", number: callDigits(o.number), leadId: o.leadId || "", trigger: o.trigger, mode: s.liveMode ? "live" : "safe" };
+  const e = { id: "CALL-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: now(), ts_ms: Date.now(), party: o.party, name: o.name || "", number: callDigits(o.number), leadId: o.leadId || "", trigger: o.trigger, mode: s.liveMode ? "live" : "safe", customer_name: o.customer_name || "", broker_name: o.broker_name || "", project: o.project || "", meeting_time: o.meeting_time || "", greeting: o.greeting || "", client_ref: o.client_ref || "", message: o.message || "" };
   if (!g.ok) { e.status = "skipped"; e.reason = g.reason; callLog().unshift(e); save(); return { ok: false, reason: g.reason }; }
   if (s.liveMode) { e.status = "queued"; e.reason = "Queued for ElevenLabs"; callLog().unshift(e); save(); try { if (typeof window !== "undefined" && window.RCRM_FB && RCRM_FB.enqueueCall) RCRM_FB.enqueueCall(e); } catch (x) {} return { ok: true, live: true }; }
   e.status = "logged"; e.reason = "Safe Mode — no real call was made"; callLog().unshift(e); save();
@@ -2474,8 +2490,9 @@ function requestCall(o) {
 // Fire an auto trigger for a lead (called on save). All guards apply; skips are logged quietly.
 function autoCallForLead(lead, trigger) {
   if (!lead) return; const s = callSettings(); if (!s.triggers[trigger]) return;
-  if (lead.call_customer && lead.customer_mobile) requestCall({ party: "customer", number: lead.customer_mobile, name: lead.customer_name, leadId: lead.id, trigger });
-  if (lead.call_broker && lead.source_mobile) requestCall({ party: "broker", number: lead.source_mobile, name: lead.source_name, leadId: lead.id, trigger });
+  const v = callVars(lead);
+  if (lead.call_customer && lead.customer_mobile) requestCall(Object.assign({ party: "customer", number: lead.customer_mobile, name: lead.customer_name, leadId: lead.id, trigger, message: callMessage(trigger, "customer", v) }, v));
+  if (lead.call_broker && lead.source_mobile) requestCall(Object.assign({ party: "broker", number: lead.source_mobile, name: lead.source_name, leadId: lead.id, trigger, message: callMessage(trigger, "broker", v) }, v));
 }
 function manualCall(leadId, party) {
   const l = leadById(leadId); if (!l) return;
@@ -2485,7 +2502,8 @@ function manualCall(leadId, party) {
   const s = callSettings();
   const who = (party === "customer" ? (name || "customer") : (name || "channel partner")) + " · " + callDigits(number);
   if (!confirm(`${s.liveMode ? "Place an AI voice call" : "Log a test call (SAFE MODE — no real call is made)"} to ${who}?`)) return;
-  const r = requestCall({ party, number, name, leadId, trigger: "manual" });
+  const v = callVars(l);
+  const r = requestCall(Object.assign({ party, number, name, leadId, trigger: "manual", message: callMessage("manual", party, v) }, v));
   if (r.ok) toast(s.liveMode ? "📞 Call queued" : "✓ Safe Mode: logged (no real call made)");
   else toast("Not called — " + r.reason);
 }
@@ -2689,10 +2707,13 @@ function openLeadForm(existing) {
       followup_at: fieldVal("f_followup") ? fieldVal("f_followup").replace("T", " ") : "", followup_kind: fieldVal("f_followup_kind"), remark: fieldVal("f_remark"),
       call_customer: !!(document.getElementById("f_call_customer") || {}).checked, call_broker: !!(document.getElementById("f_call_broker") || {}).checked,
     });
-    // AI voice-calling triggers (Safe Mode logs only; nothing dials until you go live).
-    const _isNew = !l.id;
-    if (_isNew) autoCallForLead(savedLead, "enquiry");
-    if (_stage === "SVD") autoCallForLead(savedLead, "visit");
+    // AI voice-calling triggers — only for ACTIVE leads, only where you toggled the
+    // party on, and each fires ONCE per lead (the guard dedupes). Reminders are handled
+    // separately by the scheduled backend at 10 AM.
+    if (savedLead.status === "Active") {
+      autoCallForLead(savedLead, "enquiry");
+      if (_stage === "SVD") autoCallForLead(savedLead, "visit");
+    }
     const extras = [];
     const st = fieldVal("f_source_type"), sn = fieldVal("f_source_name");
     if (st === "CP" && sn && !DB.brokers.some((b) => (b.name || "").trim().toLowerCase() === sn.trim().toLowerCase())) {
@@ -2972,6 +2993,17 @@ function openLeadProfile(id) {
         ${pfQuickRow("Rating", "rating", RATINGS, l.rating, id, { Hot: "q-red", Warm: "q-amber", Cold: "q-blue" })}
         ${pfQuickRow("Status", "status", STATUSES, l.status, id, { Active: "q-amber", Inactive: "q-red", Booked: "q-green" })}
       </div>
+      <div class="pf-quick-card">
+        <div class="pf-quick-head">📞 Automatic Calls <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— OFF by default; turn on to auto-call this lead (Active leads only)</span></div>
+        <div class="pf-quick-row"><span class="pf-quick-label">Customer</span><div class="pf-quick-pills">
+          <button type="button" class="qpill ${l.call_customer ? "q-green on" : ""}" data-callauto="${id}::customer::1">On</button>
+          <button type="button" class="qpill ${!l.call_customer ? "q-red on" : ""}" data-callauto="${id}::customer::0">Off</button>
+        </div></div>
+        <div class="pf-quick-row"><span class="pf-quick-label">Channel Partner</span><div class="pf-quick-pills">
+          <button type="button" class="qpill ${l.call_broker ? "q-green on" : ""}" data-callauto="${id}::broker::1">On</button>
+          <button type="button" class="qpill ${!l.call_broker ? "q-red on" : ""}" data-callauto="${id}::broker::0">Off</button>
+        </div></div>
+      </div>
       <div class="pf-two">
         <div class="pf-info-card accent-indigo">
           <div class="pf-ic-title">${IC.user} Customer</div>
@@ -3004,6 +3036,11 @@ function openLeadProfile(id) {
   const pfd = document.getElementById("pfDraft"); if (pfd) pfd.onclick = () => openLeadDraft(id);
   const pfcc = document.getElementById("pfCallCust"); if (pfcc) pfcc.onclick = () => manualCall(id, "customer");
   const pfcp = document.getElementById("pfCallCp"); if (pfcp) pfcp.onclick = () => manualCall(id, "broker");
+  document.querySelectorAll("[data-callauto]").forEach((b) => b.onclick = () => {
+    const [lid, party, val] = b.getAttribute("data-callauto").split("::"); const L = leadById(lid); if (!L) return;
+    if (party === "customer") L.call_customer = val === "1"; else L.call_broker = val === "1";
+    save(); toast("Auto-calls " + (val === "1" ? "ON" : "OFF") + " for " + (party === "customer" ? "customer" : "CP")); openLeadProfile(lid);
+  });
   const cb = document.getElementById("pfCancel");
   if (cb) cb.onclick = () => { if (!confirm("Cancel this follow-up? It will be logged in the record and removed from the follow-up list.")) return; addActivity({ entity_type: "lead", entity_id: id, kind: "Follow-up Cancelled", remark: "Scheduled " + fmtDate(l.followup_at) + " was cancelled.", activity_at: now() }); l.followup_at = ""; save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Cancelled and logged"); };
   const plRemarkEl = document.getElementById("pl_remark");
