@@ -2420,7 +2420,7 @@ function openLightbox(src) {
    so nobody is ever bombarded. Real dialing happens only via the
    Firebase Function after you connect ElevenLabs + Twilio.
    ============================================================ */
-const CALL_TRIGGERS = { manual: "Manual", enquiry: "Thank-you · enquiry", visit: "Thank-you · site visit", reminder: "Meeting reminder" };
+const CALL_TRIGGERS = { manual: "Manual", enquiry: "Thanks Call (new lead)", visit: "Site-visit Call", reminder: "Reminder Call (CP)" };
 function callSettings() {
   const d = DB.call_settings || {};
   return {
@@ -2448,13 +2448,13 @@ function callVars(lead) {
   return { customer_name: cust, broker_name: lead.source_name || "", project, meeting_time: lead.followup_at || "", followup_kind: lead.followup_kind || "", followup_date: fdate, greeting: callGreeting(), client_ref: cust || "your client" };
 }
 // The exact sentence the agent speaks first, per trigger (agent's First message = {{message}}).
+// Automatic-call scripts reuse the same polished wording as the manual call types,
+// so an auto Thank-you sounds identical to a manual Thanks Call, etc.
 function callMessage(trigger, party, v) {
-  const g = v.greeting || "Hello";
-  const name = v.customer_name || "there";
-  if (trigger === "enquiry") return `${g} ${name} — this is Ashiesh Sharma's team at B P T P. Thank you for your interest. I would personally love to host you at ${v.project || "the project"} for a proper look — I am confident you will be impressed. I will follow up shortly to fix a time that suits you. Warm regards.`;
-  if (trigger === "visit") return `${g} ${name} — Ashiesh Sharma's team at B P T P here. Delighted your site visit to ${v.project || "the project"} is set for ${v.meeting_time || "the scheduled time"}. I will personally be there to show you around. Looking forward to hosting you.`;
-  if (trigger === "reminder") return `Hi ${v.broker_name || "there"}, ${g}. A quick reminder from Ashiesh Sharma's team at B P T P — you have a site meeting today with ${v.client_ref || "your client"} for ${v.project || "the project"}. I will be there to make it smooth for you both. Looking forward to it.`;
-  return `${g} ${name} — this is Ashiesh Sharma's team at B P T P. I wanted to personally connect about ${v.project || "your requirement"}. Whenever convenient, I would be glad to help you take the next step. Thank you for your time.`;
+  if (trigger === "enquiry") return manualCallMessage("cust_thanks", v);
+  if (trigger === "reminder") return manualCallMessage(party === "broker" ? "cp_reminder" : "cust_reminder", v);
+  if (trigger === "visit") return `Hi ${v.customer_name || "there"}, this is Ashiesh Sharma. Delighted that your site visit to ${v.project || "the project"} is set for ${v.meeting_time || "the scheduled time"}. I will personally be there to show you around and assist you. Looking forward to hosting you.`;
+  return `Hi ${v.customer_name || "there"}, this is Ashiesh Sharma. I wanted to personally connect regarding ${v.project || "your requirement"}. Whenever convenient, I would be glad to help you take the next step. Thank you for your time.`;
 }
 // The gatekeeper — returns {ok:true} only if EVERY safety check passes.
 function callGuard(o) {
@@ -2508,7 +2508,7 @@ function manualCallMessage(kind, v) {
     case "cust_reminder": return `Hi ${name}, this is Ashiesh Sharma. Just a quick and friendly reminder regarding our scheduled ${stage} on ${date}. I am looking forward to connecting with you and taking the discussion ahead. Thank you, and I will speak with you soon.`;
     case "cp_reminder": return `Hi ${cp}, this is Ashiesh Sharma. Just a quick reminder, with thanks, regarding our scheduled ${stage} on ${date} with ${v.client_ref || "your client"} for ${project}. I really appreciate your support and coordination. Let us make this opportunity work together and create a great experience for the customer. Looking forward to the discussion. Thank you, and speak with you soon.`;
     case "cp_thanks": return `Hi ${cp}, this is Ashiesh Sharma. Thank you for your continued support and coordination — I truly value our association. Let us keep creating great experiences for our customers together. Looking forward to working closely. Thank you.`;
-    default: return callMessage("manual", "customer", v);
+    default: return `Hi ${name}, this is Ashiesh Sharma. I wanted to personally connect regarding ${project}. Whenever convenient, I would be glad to help you take the next step. Thank you for your time.`;
   }
 }
 // Manual call button → first ask WHICH type of call, then place it with that script.
@@ -2563,7 +2563,7 @@ function openCallCenter() {
       <div class="cc-grid">
         <div class="cc-card">
           <div class="cc-h">Which calls are on</div>
-          ${tgl("manual", "Manual button")}${tgl("enquiry", "Thank-you · enquiry")}${tgl("visit", "Thank-you · site visit")}${tgl("reminder", "Meeting reminder")}
+          ${tgl("manual", "Manual button")}${tgl("enquiry", "Thanks Call (new lead)")}${tgl("visit", "Site-visit Call")}${tgl("reminder", "Reminder Call (CP)")}
         </div>
         <div class="cc-card">
           <div class="cc-h">Anti-bombard limits</div>
