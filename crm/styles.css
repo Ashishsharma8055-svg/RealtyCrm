@@ -1180,3 +1180,10 @@ tbody tr:hover { background: var(--slate-50); }
 .cc-choice-t { font-size:14px; font-weight:700; color:var(--navy); }
 [data-theme="dark"] .cc-choice-t { color:#eaf0fa; }
 .cc-choice-s { font-size:12px; color:var(--slate-500); }
+.cc-masters { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.cc-master { display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:700; cursor:pointer; padding:9px 14px; border-radius:11px; border:1.5px solid var(--slate-200); background:var(--panel); transition:all .14s; }
+.cc-master input { width:17px; height:17px; accent-color:#059669; }
+.cc-master.on { border-color:#34d399; background:#ecfdf5; color:#065f46; }
+[data-theme="dark"] .cc-master { background:#111b30; border-color:#2b3a55; color:#aab6cc; }
+[data-theme="dark"] .cc-master.on { background:#0f2b22; border-color:#14503c; color:#6ee7b7; }
+.cc-card.cc-dim { opacity:.5; }

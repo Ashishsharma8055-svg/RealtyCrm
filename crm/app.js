@@ -2426,6 +2426,8 @@ function callSettings() {
   return {
     liveMode: !!d.liveMode,                                   // false = SAFE MODE (never dials)
     paused: d.paused != null ? !!d.paused : false,            // global kill switch
+    autoEnabled: d.autoEnabled != null ? !!d.autoEnabled : true,     // master switch for ALL automatic calls
+    manualEnabled: d.manualEnabled != null ? !!d.manualEnabled : true, // master switch for the manual call button
     triggers: Object.assign({ manual: true, enquiry: true, visit: true, reminder: true }, d.triggers || {}),
     perDayMax: d.perDayMax || 1,                              // max calls per person per day
     cooldownH: d.cooldownH || 20,                             // min hours between calls to one number
@@ -2460,6 +2462,8 @@ function callMessage(trigger, party, v) {
 function callGuard(o) {
   const s = callSettings(), num = callDigits(o.number), lead = o.leadId ? leadById(o.leadId) : null;
   if (s.paused) return { ok: false, reason: "Calling is paused (kill switch is ON)" };
+  if (o.trigger === "manual" && !s.manualEnabled) return { ok: false, reason: "Manual calls are turned off" };
+  if (o.trigger !== "manual" && !s.autoEnabled) return { ok: false, reason: "Automatic calls are turned off" };
   if (!s.triggers[o.trigger]) return { ok: false, reason: `${CALL_TRIGGERS[o.trigger] || o.trigger} calls are turned off` };
   if (num.length < 10) return { ok: false, reason: "No valid 10-digit mobile number" };
   if (callDnc().some((d) => callDigits(d) === num)) return { ok: false, reason: "Number is on the Do-Not-Call list" };
@@ -2556,14 +2560,16 @@ function openCallCenter() {
         <label class="cc-switch"><input type="checkbox" id="ccLive" ${s.liveMode ? "checked" : ""}/><span>Go live</span></label>
       </div>
 
-      <div class="cc-row">
-        <label class="cc-toggle cc-kill"><input type="checkbox" id="ccPause" ${s.paused ? "checked" : ""}/><span>⛔ Pause ALL calls (kill switch)</span></label>
+      <div class="cc-row cc-masters">
+        <label class="cc-master ${s.autoEnabled ? "on" : ""}"><input type="checkbox" id="ccAuto" ${s.autoEnabled ? "checked" : ""}/><span>🤖 Enable Automatic Calls</span></label>
+        <label class="cc-master ${s.manualEnabled ? "on" : ""}"><input type="checkbox" id="ccManual" ${s.manualEnabled ? "checked" : ""}/><span>👆 Enable Manual Calls</span></label>
+        <label class="cc-toggle cc-kill"><input type="checkbox" id="ccPause" ${s.paused ? "checked" : ""}/><span>⛔ Pause ALL (kill switch)</span></label>
       </div>
 
       <div class="cc-grid">
-        <div class="cc-card">
-          <div class="cc-h">Which calls are on</div>
-          ${tgl("manual", "Manual button")}${tgl("enquiry", "Thanks Call (new lead)")}${tgl("visit", "Site-visit Call")}${tgl("reminder", "Reminder Call (CP)")}
+        <div class="cc-card${s.autoEnabled ? "" : " cc-dim"}">
+          <div class="cc-h">Automatic call types <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(only when Automatic is on)</span></div>
+          ${tgl("enquiry", "Thanks Call (new lead)")}${tgl("visit", "Site-visit Call")}${tgl("reminder", "Reminder Call (CP)")}
         </div>
         <div class="cc-card">
           <div class="cc-h">Anti-bombard limits</div>
@@ -2586,6 +2592,8 @@ function openCallCenter() {
   const live = document.getElementById("ccLive");
   live.onchange = () => { if (live.checked && !confirm("Turn ON live calling? Real AI calls will start going out (all limits still apply). Only do this after connecting ElevenLabs.")) { live.checked = false; return; } saveCallSettings({ liveMode: live.checked }); openCallCenter(); };
   document.getElementById("ccPause").onchange = (e) => { saveCallSettings({ paused: e.target.checked }); toast(e.target.checked ? "All calls paused" : "Calls resumed"); };
+  document.getElementById("ccAuto").onchange = (e) => { saveCallSettings({ autoEnabled: e.target.checked }); toast("Automatic calls " + (e.target.checked ? "ON" : "OFF")); openCallCenter(); };
+  document.getElementById("ccManual").onchange = (e) => { saveCallSettings({ manualEnabled: e.target.checked }); toast("Manual calls " + (e.target.checked ? "ON" : "OFF")); };
   document.querySelectorAll("[data-cctrig]").forEach((cb) => cb.onchange = () => { const tr = Object.assign({}, callSettings().triggers); tr[cb.getAttribute("data-cctrig")] = cb.checked; saveCallSettings({ triggers: tr }); });
   const numSet = (id, key, lo, hi) => { const el = document.getElementById(id); if (el) el.onchange = () => { let v = Math.max(lo, Math.min(hi, Number(el.value) || lo)); el.value = v; saveCallSettings({ [key]: v }); }; };
   numSet("ccPerDay", "perDayMax", 1, 5); numSet("ccCool", "cooldownH", 1, 72); numSet("ccWinS", "winStart", 0, 23); numSet("ccWinE", "winEnd", 1, 24);
