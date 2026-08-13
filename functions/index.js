@@ -70,6 +70,7 @@ async function placeElevenLabsCall(job) {
     agent_id: ELEVENLABS_AGENT_ID.value(),
     agent_phone_number_id: ELEVENLABS_PHONE_ID.value(),
     to_number: e164IN(job.number),
+    call_recording_enabled: true,   // also have Twilio record the call so you can listen later
     conversation_initiation_client_data: {
       dynamic_variables: {
         message: job.message || "",

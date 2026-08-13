@@ -2584,7 +2584,10 @@ function openCallCenter() {
         </div>
       </div>
 
-      <div class="cc-h" style="margin-top:6px">Call history <span class="muted" style="font-weight:400">— every attempt, including why one was skipped</span></div>
+      <div class="cc-h" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+        <span>Call history <span class="muted" style="font-weight:400">— every attempt, including why one was skipped</span></span>
+        <a class="btn light sm" href="https://elevenlabs.io/app/conversational-ai/history" target="_blank" rel="noopener">🎧 Recordings &amp; transcripts ↗</a>
+      </div>
       <div class="cc-logwrap"><table class="cc-log"><thead><tr><th>When</th><th>Who</th><th>Party</th><th>Trigger</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
     <div class="modal-foot"><button class="btn outline" data-close2>Close</button><button class="btn danger" id="ccClear">Clear history</button></div>`, true);
