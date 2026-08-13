@@ -2444,7 +2444,8 @@ function callGreeting() { const h = istNow().getHours(); return h < 12 ? "Good M
 function callVars(lead) {
   const project = (lead.projects_shared || []).filter(Boolean)[0] || "";
   const cust = lead.customer_name || "";
-  return { customer_name: cust, broker_name: lead.source_name || "", project, meeting_time: lead.followup_at || "", greeting: callGreeting(), client_ref: cust || "your client" };
+  const fdate = lead.followup_at ? String(lead.followup_at).slice(0, 10) : "";
+  return { customer_name: cust, broker_name: lead.source_name || "", project, meeting_time: lead.followup_at || "", followup_kind: lead.followup_kind || "", followup_date: fdate, greeting: callGreeting(), client_ref: cust || "your client" };
 }
 // The exact sentence the agent speaks first, per trigger (agent's First message = {{message}}).
 function callMessage(trigger, party, v) {
@@ -2495,16 +2496,44 @@ function autoCallForLead(lead, trigger) {
   if (lead.call_customer && lead.customer_mobile) requestCall(Object.assign({ party: "customer", number: lead.customer_mobile, name: lead.customer_name, leadId: lead.id, trigger, message: callMessage(trigger, "customer", v) }, v));
   if (lead.call_broker && lead.source_mobile) requestCall(Object.assign({ party: "broker", number: lead.source_mobile, name: lead.source_name, leadId: lead.id, trigger, message: callMessage(trigger, "broker", v) }, v));
 }
+// The pre-written spoken scripts for a manual call, by chosen type.
+function manualCallMessage(kind, v) {
+  const name = v.customer_name || "there", cp = v.broker_name || "there";
+  const project = v.project || "the project";
+  const stage = v.followup_kind || "our upcoming discussion";
+  const date = v.followup_date || "the scheduled date";
+  switch (kind) {
+    case "cust_thanks": return `Hi ${name}, this is Ashiesh Sharma. Thank you so much for showing interest in ${project}. I really appreciate it, and I will personally make sure you get the right information and assistance regarding the project. I look forward to connecting with you soon. Have a wonderful day.`;
+    case "cust_feedback": return `Hi ${name}, this is Ashiesh Sharma. I just wanted to personally check in and understand how your experience has been so far. I would really value your feedback — about the project, the information shared with you, or anything you would like us to improve. Your feedback is genuinely important to me. Thank you, and I look forward to speaking with you again.`;
+    case "cust_reminder": return `Hi ${name}, this is Ashiesh Sharma. Just a quick and friendly reminder regarding our scheduled ${stage} on ${date}. I am looking forward to connecting with you and taking the discussion ahead. Thank you, and I will speak with you soon.`;
+    case "cp_reminder": return `Hi ${cp}, this is Ashiesh Sharma. Just a quick reminder, with thanks, regarding our scheduled ${stage} on ${date} with ${v.client_ref || "your client"} for ${project}. I really appreciate your support and coordination. Let us make this opportunity work together and create a great experience for the customer. Looking forward to the discussion. Thank you, and speak with you soon.`;
+    case "cp_thanks": return `Hi ${cp}, this is Ashiesh Sharma. Thank you for your continued support and coordination — I truly value our association. Let us keep creating great experiences for our customers together. Looking forward to working closely. Thank you.`;
+    default: return callMessage("manual", "customer", v);
+  }
+}
+// Manual call button → first ask WHICH type of call, then place it with that script.
 function manualCall(leadId, party) {
   const l = leadById(leadId); if (!l) return;
   const number = party === "customer" ? l.customer_mobile : l.source_mobile;
   const name = party === "customer" ? l.customer_name : l.source_name;
   if (!callDigits(number)) return toast("No mobile number on file for this " + (party === "customer" ? "customer" : "CP"));
-  const s = callSettings();
-  const who = (party === "customer" ? (name || "customer") : (name || "channel partner")) + " · " + callDigits(number);
+  const opts = party === "customer"
+    ? [["cust_thanks", "🙏 Thanks Call", "First-time lead — thank them for their interest"], ["cust_feedback", "💬 Feedback Call", "Check in and ask how their experience has been"], ["cust_reminder", "⏰ Reminder Call", "Remind about the next scheduled follow-up"]]
+    : [["cp_reminder", "⏰ Reminder Call", "Remind the CP about today's meeting with the client"], ["cp_thanks", "🤝 Thank-you Call", "Thank the CP for their support & coordination"]];
+  modal("📞 Choose call type · " + (esc(name) || esc(callDigits(number))), `
+    <div class="cc-choose">${opts.map(([k, lbl, sub]) => `<button type="button" class="cc-choice" data-callkind="${k}"><span class="cc-choice-t">${lbl}</span><span class="cc-choice-s">${sub}</span></button>`).join("")}</div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button></div>`, false);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  document.querySelectorAll("[data-callkind]").forEach((b) => b.onclick = () => { closeModal(); placeManualCall(leadId, party, b.getAttribute("data-callkind")); });
+}
+function placeManualCall(leadId, party, kind) {
+  const l = leadById(leadId); if (!l) return;
+  const number = party === "customer" ? l.customer_mobile : l.source_mobile;
+  const name = party === "customer" ? l.customer_name : l.source_name;
+  const s = callSettings(), v = callVars(l);
+  const who = (name || (party === "customer" ? "customer" : "channel partner")) + " · " + callDigits(number);
   if (!confirm(`${s.liveMode ? "Place an AI voice call" : "Log a test call (SAFE MODE — no real call is made)"} to ${who}?`)) return;
-  const v = callVars(l);
-  const r = requestCall(Object.assign({ party, number, name, leadId, trigger: "manual", message: callMessage("manual", party, v) }, v));
+  const r = requestCall(Object.assign({ party, number, name, leadId, trigger: "manual", message: manualCallMessage(kind, v) }, v));
   if (r.ok) toast(s.liveMode ? "📞 Call queued" : "✓ Safe Mode: logged (no real call made)");
   else toast("Not called — " + r.reason);
 }
