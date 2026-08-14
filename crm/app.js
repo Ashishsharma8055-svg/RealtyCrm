@@ -2421,6 +2421,32 @@ function openLightbox(src) {
    Firebase Function after you connect ElevenLabs + Twilio.
    ============================================================ */
 const CALL_TRIGGERS = { manual: "Manual", enquiry: "Thanks Call (new lead)", visit: "Site-visit Call", reminder: "Reminder Call (CP)" };
+const CALL_STATUS_LABELS = { logged: "Logged (safe)", pending: "Call Queued", queued: "Call Queued", sent: "Call Sent ✓", skipped: "Skipped", failed: "Call Failed" };
+function callStatusLabel(s) { return CALL_STATUS_LABELS[s] || s; }
+// Reusable message scripts the user manages (schemes/offers/updates) — {DB.call_scripts}.
+function callScripts() { if (!DB.call_scripts) DB.call_scripts = []; return DB.call_scripts; }
+function fillScript(msg, v, party) {
+  return String(msg || "")
+    .replace(/\{name\}/gi, party === "broker" ? (v.broker_name || "there") : (v.customer_name || "there"))
+    .replace(/\{customer\}/gi, v.customer_name || "there")
+    .replace(/\{cp\}/gi, v.broker_name || "there")
+    .replace(/\{project\}/gi, v.project || "the project")
+    .replace(/\{stage\}/gi, v.followup_kind || "our discussion")
+    .replace(/\{date\}/gi, v.followup_date || "the scheduled date");
+}
+// Pull the real outcome of live calls from Firestore and update the local log.
+async function reconcileCalls() {
+  if (typeof CLOUD === "undefined" || !CLOUD || typeof CLOUD.loadCalls !== "function") return false;
+  let remote; try { remote = await CLOUD.loadCalls(); } catch (e) { return false; }
+  const byId = {}; remote.forEach((r) => (byId[r._id] = r));
+  let changed = false;
+  (DB.calls || []).forEach((e) => {
+    const r = e.qid && byId[e.qid];
+    if (r && r.status && r.status !== e.status) { e.status = r.status; if (r.reason) e.reason = r.reason; if (r.conversationId) e.conversationId = r.conversationId; changed = true; }
+  });
+  if (changed) save();
+  return true;
+}
 function callSettings() {
   const d = DB.call_settings || {};
   return {
@@ -2489,7 +2515,11 @@ function requestCall(o) {
   const s = callSettings(), g = callGuard(o);
   const e = { id: "CALL-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: now(), ts_ms: Date.now(), party: o.party, name: o.name || "", number: callDigits(o.number), leadId: o.leadId || "", trigger: o.trigger, mode: s.liveMode ? "live" : "safe", customer_name: o.customer_name || "", broker_name: o.broker_name || "", project: o.project || "", meeting_time: o.meeting_time || "", greeting: o.greeting || "", client_ref: o.client_ref || "", message: o.message || "" };
   if (!g.ok) { e.status = "skipped"; e.reason = g.reason; callLog().unshift(e); save(); return { ok: false, reason: g.reason }; }
-  if (s.liveMode) { e.status = "queued"; e.reason = "Queued for ElevenLabs"; callLog().unshift(e); save(); try { if (typeof window !== "undefined" && window.RCRM_FB && RCRM_FB.enqueueCall) RCRM_FB.enqueueCall(e); } catch (x) {} return { ok: true, live: true }; }
+  if (s.liveMode) {
+    e.status = "queued"; e.reason = "Queued for ElevenLabs"; callLog().unshift(e); save();
+    try { if (typeof window !== "undefined" && window.RCRM_FB && RCRM_FB.enqueueCall) { const p = RCRM_FB.enqueueCall(e); if (p && p.then) p.then((ref) => { if (ref && ref.id) { e.qid = ref.id; save(); } }).catch(() => {}); } } catch (x) {}
+    return { ok: true, live: true };
+  }
   e.status = "logged"; e.reason = "Safe Mode — no real call was made"; callLog().unshift(e); save();
   return { ok: true, live: false };
 }
@@ -2521,9 +2551,11 @@ function manualCall(leadId, party) {
   const number = party === "customer" ? l.customer_mobile : l.source_mobile;
   const name = party === "customer" ? l.customer_name : l.source_name;
   if (!callDigits(number)) return toast("No mobile number on file for this " + (party === "customer" ? "customer" : "CP"));
-  const opts = party === "customer"
+  const base = party === "customer"
     ? [["cust_thanks", "🙏 Thanks Call", "First-time lead — thank them for their interest"], ["cust_feedback", "💬 Feedback Call", "Check in and ask how their experience has been"], ["cust_reminder", "⏰ Reminder Call", "Remind about the next scheduled follow-up"]]
     : [["cp_reminder", "⏰ Reminder Call", "Remind the CP about today's meeting with the client"], ["cp_thanks", "🤝 Thank-you Call", "Thank the CP for their support & coordination"]];
+  const custom = callScripts().map((sc) => ["script:" + sc.id, "📝 " + sc.title, "Your custom script"]);
+  const opts = base.concat(custom);
   modal("📞 Choose call type · " + (esc(name) || esc(callDigits(number))), `
     <div class="cc-choose">${opts.map(([k, lbl, sub]) => `<button type="button" class="cc-choice" data-callkind="${k}"><span class="cc-choice-t">${lbl}</span><span class="cc-choice-s">${sub}</span></button>`).join("")}</div>
     <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button></div>`, false);
@@ -2537,11 +2569,14 @@ function placeManualCall(leadId, party, kind) {
   const s = callSettings(), v = callVars(l);
   const who = (name || (party === "customer" ? "customer" : "channel partner")) + " · " + callDigits(number);
   if (!confirm(`${s.liveMode ? "Place an AI voice call" : "Log a test call (SAFE MODE — no real call is made)"} to ${who}?`)) return;
-  const r = requestCall(Object.assign({ party, number, name, leadId, trigger: "manual", message: manualCallMessage(kind, v) }, v));
+  let message;
+  if (kind.indexOf("script:") === 0) { const sc = callScripts().find((x) => x.id === kind.slice(7)); message = sc ? fillScript(sc.message, v, party) : manualCallMessage("default", v); }
+  else message = manualCallMessage(kind, v);
+  const r = requestCall(Object.assign({ party, number, name, leadId, trigger: "manual", message }, v));
   if (r.ok) toast(s.liveMode ? "📞 Call queued" : "✓ Safe Mode: logged (no real call made)");
   else toast("Not called — " + r.reason);
 }
-function openCallCenter() {
+function openCallCenter(quiet) {
   const s = callSettings();
   const log = callLog().slice(0, 80);
   const tgl = (key, label) => `<label class="cc-toggle"><input type="checkbox" data-cctrig="${key}" ${s.triggers[key] ? "checked" : ""}/><span>${label}</span></label>`;
@@ -2550,7 +2585,7 @@ function openCallCenter() {
       <td>${esc(c.name || "—")}<div class="cc-num">${esc(c.number)}</div></td>
       <td>${c.party === "customer" ? "Customer" : "CP"}</td>
       <td>${esc(CALL_TRIGGERS[c.trigger] || c.trigger)}</td>
-      <td><span class="cc-st cc-st-${c.status}">${esc(c.status)}</span>${c.reason ? `<div class="cc-reason">${esc(c.reason)}</div>` : ""}</td>
+      <td><span class="cc-st cc-st-${c.status}">${esc(callStatusLabel(c.status))}</span>${c.reason ? `<div class="cc-reason">${esc(c.reason)}</div>` : ""}</td>
     </tr>`).join("") : `<tr><td colspan="5" class="muted" style="padding:18px">No calls logged yet.</td></tr>`;
   modal("📞 Call Center", `
     <div class="cc">
@@ -2568,8 +2603,12 @@ function openCallCenter() {
 
       <div class="cc-grid">
         <div class="cc-card${s.autoEnabled ? "" : " cc-dim"}">
-          <div class="cc-h">Automatic call types <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">(only when Automatic is on)</span></div>
-          ${tgl("enquiry", "Thanks Call (new lead)")}${tgl("visit", "Site-visit Call")}${tgl("reminder", "Reminder Call (CP)")}
+          <div class="cc-h">🧑 Automatic — Customer</div>
+          ${tgl("enquiry", "Thanks Call (new lead)")}${tgl("visit", "Site-visit Call")}
+        </div>
+        <div class="cc-card${s.autoEnabled ? "" : " cc-dim"}">
+          <div class="cc-h">🤝 Automatic — Channel Partner</div>
+          ${tgl("reminder", "Reminder Call")}
         </div>
         <div class="cc-card">
           <div class="cc-h">Anti-bombard limits</div>
@@ -2585,12 +2624,12 @@ function openCallCenter() {
       </div>
 
       <div class="cc-h" style="margin-top:6px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
-        <span>Call history <span class="muted" style="font-weight:400">— every attempt, including why one was skipped</span></span>
-        <a class="btn light sm" href="https://elevenlabs.io/app/conversational-ai/history" target="_blank" rel="noopener">🎧 Recordings &amp; transcripts ↗</a>
+        <span>Call history <span class="muted" style="font-weight:400">— live result of every attempt</span></span>
+        <span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn light sm" id="ccRefresh">↻ Refresh</button><a class="btn light sm" href="https://elevenlabs.io/app/conversational-ai/history" target="_blank" rel="noopener">🎧 Recordings ↗</a></span>
       </div>
       <div class="cc-logwrap"><table class="cc-log"><thead><tr><th>When</th><th>Who</th><th>Party</th><th>Trigger</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
-    <div class="modal-foot"><button class="btn outline" data-close2>Close</button><button class="btn danger" id="ccClear">Clear history</button></div>`, true);
+    <div class="modal-foot"><button class="btn outline" data-close2>Close</button><button class="btn light" id="ccScripts">📝 Message scripts</button><button class="btn danger" id="ccClear">Clear history</button></div>`, true);
   document.querySelector("[data-close2]").onclick = closeModal;
   const live = document.getElementById("ccLive");
   live.onchange = () => { if (live.checked && !confirm("Turn ON live calling? Real AI calls will start going out (all limits still apply). Only do this after connecting ElevenLabs.")) { live.checked = false; return; } saveCallSettings({ liveMode: live.checked }); openCallCenter(); };
@@ -2603,6 +2642,40 @@ function openCallCenter() {
   const add = document.getElementById("ccDncAdd"); if (add) add.onclick = () => { const n = callDigits(document.getElementById("ccDncNum").value); if (n.length < 10) return toast("Enter a valid number"); if (!callDnc().some((d) => callDigits(d) === n)) callDnc().push(n); save(); openCallCenter(); };
   document.querySelectorAll("[data-dncdel]").forEach((b) => b.onclick = () => { const n = b.getAttribute("data-dncdel"); DB.call_dnc = callDnc().filter((d) => callDigits(d) !== n); save(); openCallCenter(); });
   document.getElementById("ccClear").onclick = () => { if (confirm("Clear the whole call history? (Settings and limits are kept.)")) { DB.calls = []; save(); openCallCenter(); } };
+  const scr = document.getElementById("ccScripts"); if (scr) scr.onclick = openScriptManager;
+  const rf = document.getElementById("ccRefresh"); if (rf) rf.onclick = () => openCallCenter();
+  // Pull live results from the cloud, then re-render once (quiet = no re-fetch → no loop).
+  if (!quiet) reconcileCalls().then((ok) => { if (ok && document.querySelector(".cc-log")) openCallCenter(true); });
+}
+/* ---------- Custom message scripts (schemes / offers / updates) ---------- */
+function openScriptManager() {
+  const list = callScripts();
+  const rows = list.length ? list.map((sc) => `<div class="sc-item"><div class="sc-item-t"><b>${esc(sc.title)}</b><div class="sc-item-m">${esc(String(sc.message).slice(0, 130))}${String(sc.message).length > 130 ? "…" : ""}</div></div><div class="sc-item-a"><button class="btn light sm" data-scedit="${sc.id}">Edit</button><button class="btn danger sm" data-scdel="${sc.id}">Del</button></div></div>`).join("") : `<div class="muted" style="font-size:13px;padding:10px">No scripts yet. Add one for your current scheme, offer or update — it'll appear in the 📞 call picker on every lead.</div>`;
+  modal("📝 Message Scripts", `
+    <p class="muted" style="font-size:12px;line-height:1.6;margin-bottom:12px">Reusable AI call scripts you control. They show up as choices in the 📞 call picker on every lead. Placeholders auto-fill per lead: <code>{name}</code>, <code>{project}</code>, <code>{cp}</code>, <code>{stage}</code>, <code>{date}</code>.</p>
+    <div class="sc-list">${rows}</div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Back</button><button class="btn primary" id="scAdd">+ Add script</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = () => openCallCenter();
+  document.getElementById("scAdd").onclick = () => openScriptEdit(null);
+  document.querySelectorAll("[data-scedit]").forEach((b) => b.onclick = () => openScriptEdit(b.getAttribute("data-scedit")));
+  document.querySelectorAll("[data-scdel]").forEach((b) => b.onclick = () => { if (confirm("Delete this script?")) { DB.call_scripts = callScripts().filter((x) => x.id !== b.getAttribute("data-scdel")); save(); openScriptManager(); } });
+}
+function openScriptEdit(id) {
+  const sc = id ? callScripts().find((x) => x.id === id) : { title: "", message: "" };
+  modal(id ? "Edit script" : "New script", `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-body"><div class="form-grid">
+      <div class="field full"><label>Title</label><input id="sc_title" autocomplete="off" value="${esc(sc.title || "")}" placeholder="e.g. Diwali Offer 2026"/></div>
+      <div class="field full"><label>Message (what the AI will say)</label><textarea id="sc_msg" rows="6" placeholder="Hi {name}, this is Ashiesh Sharma. We have a limited-period offer on {project} this festive season…">${esc(sc.message || "")}</textarea></div>
+    </div><p class="muted" style="font-size:11px;margin-top:6px">Placeholders auto-fill per lead: {name}, {project}, {cp}, {stage}, {date}</p></div></div></div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="scSave">Save script</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = () => openScriptManager();
+  document.getElementById("scSave").onclick = () => {
+    const title = fieldVal("sc_title").trim(), message = fieldVal("sc_msg").trim();
+    if (!title || !message) return toast("Add a title and a message");
+    if (id) { const x = callScripts().find((z) => z.id === id); if (x) { x.title = title; x.message = message; } }
+    else callScripts().push({ id: "SC-" + Date.now().toString(36), title, message });
+    save(); toast("Script saved ✓"); openScriptManager();
+  };
 }
 
 /* ---------- Lead form ---------- */

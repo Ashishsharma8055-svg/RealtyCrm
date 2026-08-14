@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RealtyCRM — Coffee &amp; Deals</title>
-  <link rel="stylesheet" href="styles.css?v=38" />
+  <link rel="stylesheet" href="styles.css?v=39" />
 </head>
 <body>
   <div id="app">
@@ -70,7 +70,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, updatePassword, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
     // ============================================================
     //  RUN MODE — flip this ONE line:
     //    "local" = runs instantly in VS Code, no setup. Login: admin / admin123
@@ -129,6 +129,9 @@
         // NOTE: status/createdAt are applied LAST so the queued doc is always "pending"
         // (the incoming job carries status:"queued" for the local log — must not win here).
         enqueueCall: (job) => addDoc(collection(db, "call_queue"), Object.assign({}, job, { status: "pending", createdAt: Date.now() })),
+        // Read back the real outcome of recent calls (set by the Cloud Function) so the
+        // CRM's Call history can show live results (sent / failed / skipped).
+        loadCalls: async () => { try { const snap = await getDocs(query(collection(db, "call_queue"), orderBy("createdAt", "desc"), limit(150))); return snap.docs.map((d) => Object.assign({ _id: d.id }, d.data())); } catch (e) { return []; } },
       };
     } catch (e) { console.warn("Firebase init failed — falling back to local storage.", e); }
     window.dispatchEvent(new Event("rcrm-fb-ready"));
@@ -143,6 +146,6 @@
   <script src="../js/data.js?v=2"></script>
   <!-- SheetJS — same library admin.html uses, for Excel Template/Import/Export. -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="app.js?v=48"></script>
+  <script src="app.js?v=49"></script>
 </body>
 </html>
