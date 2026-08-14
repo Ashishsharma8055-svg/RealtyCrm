@@ -3117,7 +3117,8 @@ function openLeadProfile(id) {
     if (!r) { if (plRemarkEl) { plRemarkEl.classList.add("needfill"); plRemarkEl.focus(); } return toast("Add a remark to log this activity"); }
     const fu = fieldVal("pl_follow");
     addActivity({ entity_type: "lead", entity_id: id, kind: fieldVal("pl_kind"), remark: r, activity_at: (fieldVal("pl_when") || nowLocalStr()).replace("T", " "), next_kind: fu ? fieldVal("pl_nextkind") : "", next_at: fu ? fu.replace("T", " ") : "" });
-    l.followup_at = fu ? fu.replace("T", " ") : ""; save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Journey updated");
+    l.followup_at = fu ? fu.replace("T", " ") : ""; l.followup_kind = fu ? fieldVal("pl_nextkind") : "";   // keep the tile's type in sync with the new follow-up
+    save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Journey updated");
   };
 }
 
@@ -3177,7 +3178,7 @@ function openBrokerProfile(id) {
     if (!r) { if (pbRemarkEl) { pbRemarkEl.classList.add("needfill"); pbRemarkEl.focus(); } return toast("Add a remark to log this activity"); }
     const fu = fieldVal("pb_follow");
     addActivity({ entity_type: "broker", entity_id: id, kind: fieldVal("pb_kind"), remark: r, activity_at: (fieldVal("pb_when") || nowLocalStr()).replace("T", " "), next_kind: fu ? fieldVal("pb_nextkind") : "", next_at: fu ? fu.replace("T", " ") : "" });
-    b.followup_at = fu ? fu.replace("T", " ") : ""; save(); gcalMaybeInsert("broker", b); go(active); openBrokerProfile(id); toast("Journey updated");
+    b.followup_at = fu ? fu.replace("T", " ") : ""; b.followup_kind = fu ? fieldVal("pb_nextkind") : ""; save(); gcalMaybeInsert("broker", b); go(active); openBrokerProfile(id); toast("Journey updated");
   };
 }
 /* ---- Firm / CP 360 working report ----
