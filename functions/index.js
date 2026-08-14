@@ -36,31 +36,53 @@ const istDay = (d) => (d || istNow()).toISOString().slice(0, 10);
 const digits = (s) => String(s || "").replace(/\D/g, "");
 const e164IN = (s) => { const d = digits(s); return d.length > 10 ? "+" + d : "+91" + d; };
 
+// Read the live settings the user controls in the CRM's Call Center (window, caps,
+// pause, auto/manual switches). Falls back to the safe defaults above if unset.
+async function getCallCfg() {
+  const d = { paused: false, autoEnabled: true, manualEnabled: true, winStart: WINDOW_START, winEnd: WINDOW_END, perDayMax: PER_DAY_MAX, cooldownH: COOLDOWN_H, globalDailyCap: GLOBAL_DAILY_CAP };
+  try {
+    const snap = await db.collection("crm").doc("state").get();
+    const c = (snap.exists && snap.data().call_settings) || {};
+    return {
+      paused: !!c.paused,
+      autoEnabled: c.autoEnabled != null ? !!c.autoEnabled : true,
+      manualEnabled: c.manualEnabled != null ? !!c.manualEnabled : true,
+      winStart: c.winStart != null ? c.winStart : d.winStart,
+      winEnd: c.winEnd != null ? c.winEnd : d.winEnd,
+      perDayMax: c.perDayMax || d.perDayMax,
+      cooldownH: c.cooldownH || d.cooldownH,
+      globalDailyCap: c.globalDailyCap || d.globalDailyCap,
+    };
+  } catch (e) { return d; }
+}
 // Returns null if OK to call, or a short reason string if it must be skipped.
 // Uses only single-field queries (no composite Firestore index needed) and filters
 // in memory, so it can never fail on a "query requires an index" error.
-async function serverGuard(job) {
+async function serverGuard(job, cfg) {
   const num = digits(job.number);
   if (num.length < 10) return "invalid number";
+  if (cfg.paused) return "calling is paused (kill switch)";
+  if (job.trigger === "manual" && !cfg.manualEnabled) return "manual calls are turned off";
+  if (job.trigger !== "manual" && !cfg.autoEnabled) return "automatic calls are turned off";
   const h = istNow().getHours();
-  if (h < WINDOW_START || h >= WINDOW_END) return "outside calling window";
+  if (h < cfg.winStart || h >= cfg.winEnd) return `outside calling window (${cfg.winStart}-${cfg.winEnd} IST)`;
 
   const dnc = await db.collection("call_dnc").doc(num).get();
   if (dnc.exists) return "on do-not-call list";
 
   const today = istDay();
-  const since = Date.now() - COOLDOWN_H * 3600000;
+  const since = Date.now() - cfg.cooldownH * 3600000;
 
   // Cooldown + per-day cap: one simple query for this number, then check in memory.
   const hist = await db.collection("call_history").where("number", "==", num).get();
   let mostRecent = 0, todayCount = 0;
   hist.forEach((d) => { const x = d.data() || {}; if ((x.ts || 0) > mostRecent) mostRecent = x.ts || 0; if (x.dayIST === today) todayCount++; });
   if (mostRecent > since) return "cooldown";
-  if (todayCount >= PER_DAY_MAX) return "daily limit for number";
+  if (todayCount >= cfg.perDayMax) return "daily limit for number";
 
   // Global daily safety cap (single-field query — no index needed).
-  const globalHits = await db.collection("call_history").where("dayIST", "==", today).limit(GLOBAL_DAILY_CAP).get();
-  if (globalHits.size >= GLOBAL_DAILY_CAP) return "global daily cap";
+  const globalHits = await db.collection("call_history").where("dayIST", "==", today).limit(cfg.globalDailyCap).get();
+  if (globalHits.size >= cfg.globalDailyCap) return "global daily cap";
 
   return null;
 }
@@ -105,7 +127,8 @@ exports.dialQueuedCall = onDocumentCreated(
     if (job.status && job.status !== "pending" && job.status !== "queued") { console.log("skip: already handled, status", job.status); return; }
 
     try {
-      const reason = await serverGuard(job);
+      const cfg = await getCallCfg();
+      const reason = await serverGuard(job, cfg);
       if (reason) { console.log("guard skipped:", reason); await snap.ref.update({ status: "skipped", reason, handledAt: Date.now() }); return; }
       const out = await placeElevenLabsCall(job);
       await db.collection("call_history").add({
