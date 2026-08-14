@@ -3050,8 +3050,8 @@ function openLeadProfile(id) {
           const sub = pj.length ? (esc(l.requirement) || "") : "";
           return heroCard(IC.home, "Requirement", head, "teal", sub);
         })()}
-        ${heroCard(IC.flag, "Stage", esc(l.stage) || "—", "amber")}
-        ${heroCard(IC.clock, "Next Follow-up", l.followup_at ? fmtDate(l.followup_at) + (l.followup_kind ? ` · ${esc(l.followup_kind)}` : "") : "Not set", l.followup_at ? "rose" : "green")}
+        ${(() => { const lbl = (LEAD_LEVELS[leadLevel(l) - 1] || {}).label || "New Enquiry"; return heroCard(IC.flag, "Qualified Stage", esc(lbl), "amber"); })()}
+        ${heroCard(IC.clock, "Next Follow-up", l.followup_at ? (esc(l.followup_kind) || "Follow-up") : "None planned", l.followup_at ? "rose" : "green", l.followup_at ? esc(fmtDate(l.followup_at)) : "")}
       </div>
       ${leadTimeline(l, id)}
       <div class="pf-quick-card">
