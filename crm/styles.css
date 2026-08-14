@@ -1187,3 +1187,34 @@ tbody tr:hover { background: var(--slate-50); }
 [data-theme="dark"] .cc-master { background:#111b30; border-color:#2b3a55; color:#aab6cc; }
 [data-theme="dark"] .cc-master.on { background:#0f2b22; border-color:#14503c; color:#6ee7b7; }
 .cc-card.cc-dim { opacity:.5; }
+
+/* ===== Lead journey timeline ===== */
+.pf-timeline-card { background:var(--panel); border:1px solid var(--slate-200); border-radius:14px; padding:16px 18px 22px; margin-bottom:16px; box-shadow:0 3px 14px rgba(15,23,42,.05); }
+[data-theme="dark"] .pf-timeline-card { background:#111b30; border-color:#26324c; }
+.tl-track { display:flex; align-items:flex-start; gap:0; margin-top:16px; overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch; }
+.tl-node { position:relative; flex:1 1 0; min-width:82px; display:flex; flex-direction:column; align-items:center; gap:9px; background:none; border:none; cursor:pointer; font-family:inherit; padding:0; }
+.tl-node[disabled] { cursor:default; }
+/* connector line between nodes */
+.tl-node::before { content:""; position:absolute; top:15px; left:-50%; width:100%; height:3px; background:var(--slate-200); z-index:0; }
+.tl-node:first-child::before { display:none; }
+[data-theme="dark"] .tl-node::before { background:#2b3a55; }
+.tl-dot { position:relative; z-index:1; width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:800; color:#fff; background:var(--slate-300); box-shadow:0 2px 6px rgba(15,23,42,.15); transition:transform .15s; }
+.tl-label { font-size:11px; font-weight:600; color:var(--slate-500); text-align:center; line-height:1.25; }
+.tl-node:hover .tl-dot { transform:scale(1.12); }
+.tl-node:hover .tl-label { color:var(--indigo); }
+/* states: done (reached), current (now), todo (not yet) */
+.tl-done .tl-dot { background:linear-gradient(135deg,#34d399,#059669); }
+.tl-done::before { background:linear-gradient(90deg,#34d399,#059669); }
+.tl-done .tl-label { color:var(--slate-600); }
+.tl-current .tl-dot { background:linear-gradient(135deg,#6366f1,#8b5cf6); box-shadow:0 0 0 4px rgba(99,102,241,.2),0 4px 12px rgba(99,102,241,.4); width:38px; height:38px; font-size:14px; }
+.tl-current .tl-label { color:var(--indigo); font-weight:800; }
+.tl-todo .tl-dot { background:var(--slate-300); }
+[data-theme="dark"] .tl-todo .tl-dot { background:#33415c; }
+[data-theme="dark"] .tl-label { color:#8ea0bc; }
+[data-theme="dark"] .tl-done .tl-label { color:#c6d1e2; }
+/* terminal Booked / Lost */
+.tl-term { cursor:default; }
+.tl-term.tl-booked .tl-dot { background:linear-gradient(135deg,#10b981,#047857); box-shadow:0 0 0 4px rgba(16,185,129,.18); }
+.tl-term.tl-booked .tl-label { color:#059669; font-weight:800; }
+.tl-term.tl-lost .tl-dot { background:linear-gradient(135deg,#f87171,#dc2626); box-shadow:0 0 0 4px rgba(220,38,38,.16); }
+.tl-term.tl-lost .tl-label { color:#dc2626; font-weight:800; }

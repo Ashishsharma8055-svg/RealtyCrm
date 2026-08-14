@@ -2747,6 +2747,7 @@ function openLeadForm(existing) {
       projects_shared, costing, units, stage: _stage, rating: fieldVal("f_rating"), status: _status,
       followup_at: fieldVal("f_followup") ? fieldVal("f_followup").replace("T", " ") : "", followup_kind: fieldVal("f_followup_kind"), remark: fieldVal("f_remark"),
       call_customer: !!(document.getElementById("f_call_customer") || {}).checked, call_broker: !!(document.getElementById("f_call_broker") || {}).checked,
+      level: Math.max(Number(l.level) || 1, stageLevel(_stage)),   // journey ratchets forward, never back
     });
     // AI voice-calling triggers — only for ACTIVE leads, only where you toggled the
     // party on, and each fires ONCE per lead (the guard dedupes). Reminders are handled
@@ -2993,6 +2994,30 @@ function logBox(prefix, current) {
   </div>`;
 }
 
+/* ---------- Lead journey timeline (ratchets forward; click to change) ---------- */
+const LEAD_LEVELS = [
+  { n: 1, label: "New Enquiry", stage: "" },
+  { n: 2, label: "Call", stage: "Call" },
+  { n: 3, label: "F2F", stage: "F2F" },
+  { n: 4, label: "Site Visit", stage: "SVD" },
+  { n: 5, label: "Negotiation", stage: "Negotiation" },
+];
+function stageLevel(stage) { return ({ "": 1, Call: 2, F2F: 3, SVD: 4, VDNB: 4, Negotiation: 5 })[stage || ""] || 1; }
+// Highest level ever reached — never regresses even if the current stage is set lower.
+function leadLevel(l) { return Math.max(Number(l.level) || 1, stageLevel(l.stage)); }
+function leadTerminal(l) { return l.status === "Booked" ? "Booked" : l.status === "Inactive" ? "Lost" : ""; }
+function leadTimeline(l, id) {
+  const cur = leadLevel(l), term = leadTerminal(l);
+  const nodes = LEAD_LEVELS.map((lv) => {
+    const state = lv.n < cur ? "done" : lv.n === cur ? "current" : "todo";
+    return `<button type="button" class="tl-node tl-${state}" data-tllevel="${id}::${lv.n}" title="Move to ${esc(lv.label)}"><span class="tl-dot">${lv.n < cur ? "✓" : lv.n}</span><span class="tl-label">${esc(lv.label)}</span></button>`;
+  }).join("");
+  const termNode = term ? `<div class="tl-node tl-term tl-${term.toLowerCase()}" title="Set from Status"><span class="tl-dot">${term === "Booked" ? "★" : "✕"}</span><span class="tl-label">${term}</span></div>` : "";
+  return `<div class="pf-timeline-card">
+    <div class="pf-quick-head">📍 Lead Journey <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— where the lead is now · tap a stage to move it (it never slips backward on its own; Booked/Lost come from Status)</span></div>
+    <div class="tl-track">${nodes}${termNode}</div>
+  </div>`;
+}
 function openLeadProfile(id) {
   const l = leadById(id); if (!l) return;
   const projects = l.projects_shared || [], costing = l.costing || {};
@@ -3028,6 +3053,7 @@ function openLeadProfile(id) {
         ${heroCard(IC.flag, "Stage", esc(l.stage) || "—", "amber")}
         ${heroCard(IC.clock, "Next Follow-up", l.followup_at ? fmtDate(l.followup_at) + (l.followup_kind ? ` · ${esc(l.followup_kind)}` : "") : "Not set", l.followup_at ? "rose" : "green")}
       </div>
+      ${leadTimeline(l, id)}
       <div class="pf-quick-card">
         <div class="pf-quick-head">⚡ Quick Update <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— one tap to change &amp; save</span></div>
         ${pfQuickRow("Stage", "stage", STAGES, l.stage, id, null)}
@@ -3078,9 +3104,9 @@ function openLeadProfile(id) {
   const pfcc = document.getElementById("pfCallCust"); if (pfcc) pfcc.onclick = () => manualCall(id, "customer");
   const pfcp = document.getElementById("pfCallCp"); if (pfcp) pfcp.onclick = () => manualCall(id, "broker");
   document.querySelectorAll("[data-callauto]").forEach((b) => b.onclick = () => {
-    const [lid, party, val] = b.getAttribute("data-callauto").split("::"); const L = leadById(lid); if (!L) return;
+    const [lid, party, val] = b.getAttribute("data-callauto").split("::"); const L = leadById(Number(lid)); if (!L) return;
     if (party === "customer") L.call_customer = val === "1"; else L.call_broker = val === "1";
-    save(); toast("Auto-calls " + (val === "1" ? "ON" : "OFF") + " for " + (party === "customer" ? "customer" : "CP")); openLeadProfile(lid);
+    save(); toast("Auto-calls " + (val === "1" ? "ON" : "OFF") + " for " + (party === "customer" ? "customer" : "CP")); openLeadProfile(Number(lid));
   });
   const cb = document.getElementById("pfCancel");
   if (cb) cb.onclick = () => { if (!confirm("Cancel this follow-up? It will be logged in the record and removed from the follow-up list.")) return; addActivity({ entity_type: "lead", entity_id: id, kind: "Follow-up Cancelled", remark: "Scheduled " + fmtDate(l.followup_at) + " was cancelled.", activity_at: now() }); l.followup_at = ""; save(); gcalMaybeInsert("lead", l); go(active); openLeadProfile(id); toast("Cancelled and logged"); };
@@ -3282,11 +3308,23 @@ document.addEventListener("click", (e) => {
   const cp360 = e.target.closest("[data-cp360]"); if (cp360) { e.preventDefault(); return openCP360(cp360.getAttribute("data-cp360")); }
   const stage = e.target.closest("[data-stage]"); if (stage) return openDrill("stage:" + stage.getAttribute("data-stage"));
   const grade = e.target.closest("[data-grade]"); if (grade) return openDrill("grade:" + grade.getAttribute("data-grade"));
+  const tll = e.target.closest("[data-tllevel]"); if (tll) {
+    const p = tll.getAttribute("data-tllevel").split("::"); const id = Number(p[0]), n = Number(p[1]);
+    const l = leadById(id); if (!l) return; const lv = LEAD_LEVELS[n - 1]; if (!lv) return;
+    if (leadLevel(l) === n && l.stage === lv.stage) return;
+    if (!confirm(`Move ${l.customer_name || l.lead_number} to “${lv.label}”?`)) return;
+    l.level = n; l.stage = lv.stage;
+    addActivity({ entity_type: "lead", entity_id: id, kind: "Journey moved", remark: "Stage → " + lv.label, activity_at: now() });
+    save(); gcalMaybeInsert("lead", l); toast("Moved to " + lv.label);
+    go(active); openLeadProfile(id);
+    return;
+  }
   const lq = e.target.closest("[data-leadquick]"); if (lq) {
     const parts = lq.getAttribute("data-leadquick").split("::"); const id = Number(parts[0]), field = parts[1], val = parts[2];
     const l = leadById(id); if (!l) return;
     if (l[field] === val) return;   // already set
     l[field] = val;
+    if (field === "stage") l.level = Math.max(Number(l.level) || 1, stageLevel(val));   // ratchet the journey forward
     if (l.status === "Inactive" && l.stage === "SVD") l.stage = "VDNB";   // site visit done + inactive → VDNB
     addActivity({ entity_type: "lead", entity_id: id, kind: field.charAt(0).toUpperCase() + field.slice(1) + " updated", remark: field + " → " + val, activity_at: now() });
     save(); gcalMaybeInsert("lead", l); toast("Updated · " + field + " → " + val);
