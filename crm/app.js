@@ -2608,7 +2608,7 @@ function manualCall(leadId, party) {
   const name = party === "customer" ? l.customer_name : l.source_name;
   if (!callDigits(number)) return toast("No mobile number on file for this " + (party === "customer" ? "customer" : "CP"));
   const base = Object.keys(CALL_OBJECTIVES).filter((k) => CALL_OBJECTIVES[k].party === party).map((k) => [k, CALL_OBJECTIVES[k].label, CALL_OBJECTIVES[k].sub]);
-  const custom = callScripts().map((sc) => ["script:" + sc.id, "📝 " + sc.title, "Your custom script"]);
+  const custom = callScripts().filter((sc) => !sc.party || sc.party === "any" || sc.party === party).map((sc) => ["script:" + sc.id, "📝 " + sc.title, "Your custom script"]);
   const opts = base.concat(custom);
   modal("📞 Choose call type · " + (esc(name) || esc(callDigits(number))), `
     <div class="cc-choose">${opts.map(([k, lbl, sub]) => `<button type="button" class="cc-choice" data-callkind="${k}"><span class="cc-choice-t">${lbl}</span><span class="cc-choice-s">${sub}</span></button>`).join("")}</div>
@@ -2689,7 +2689,7 @@ function openCallCenter(quiet) {
       </div>
       <div class="cc-logwrap"><table class="cc-log"><thead><tr><th>When</th><th>Who</th><th>Party</th><th>Trigger</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div>
     </div>
-    <div class="modal-foot"><button class="btn outline" data-close2>Close</button><button class="btn light" id="ccScripts">📝 Message scripts</button><button class="btn danger" id="ccClear">Clear history</button></div>`, true);
+    <div class="modal-foot"><button class="btn outline" data-close2>Close</button><button class="btn light" id="ccScripts">📝 Call scripts</button><button class="btn danger" id="ccClear">Clear history</button></div>`, true);
   document.querySelector("[data-close2]").onclick = closeModal;
   const live = document.getElementById("ccLive");
   live.onchange = () => { if (live.checked && !confirm("Turn ON live calling? Real AI calls will start going out (all limits still apply). Only do this after connecting ElevenLabs.")) { live.checked = false; return; } saveCallSettings({ liveMode: live.checked }); openCallCenter(); };
@@ -2718,19 +2718,20 @@ function openCallCenter(quiet) {
 function openScriptManager() {
   const list = callScripts();
   const tmplRows = TEMPLATE_META.map(([k, label]) => `<div class="sc-item"><div class="sc-item-t"><b>${esc(label)}${(DB.call_templates && DB.call_templates[k]) ? ` <span class="an-badge">edited</span>` : ""}</b><div class="sc-item-m">${esc(String(callTemplate(k)).slice(0, 130))}${String(callTemplate(k)).length > 130 ? "…" : ""}</div></div><div class="sc-item-a"><button class="btn light sm" data-tmpledit="${k}">Edit</button></div></div>`).join("");
-  const rows = list.length ? list.map((sc) => `<div class="sc-item"><div class="sc-item-t"><b>${esc(sc.title)}</b><div class="sc-item-m">${esc(String(sc.message).slice(0, 130))}${String(sc.message).length > 130 ? "…" : ""}</div></div><div class="sc-item-a"><button class="btn light sm" data-scedit="${sc.id}">Edit</button><button class="btn danger sm" data-scdel="${sc.id}">Del</button></div></div>`).join("") : `<div class="muted" style="font-size:13px;padding:10px">No special messages yet. Add one for a scheme, offer or update — it'll appear as "Any Special Message" in the 📞 call picker.</div>`;
-  modal("📝 Message Scripts & Templates", `
+  const partyTag = (p) => p === "customer" ? `<span class="an-badge">Customer</span>` : p === "broker" ? `<span class="an-badge">CP</span>` : `<span class="an-badge muted">Any</span>`;
+  const rows = list.length ? list.map((sc) => `<div class="sc-item"><div class="sc-item-t"><b>${esc(sc.title)} ${partyTag(sc.party)}</b><div class="sc-item-m">${esc(String(sc.message).slice(0, 130))}${String(sc.message).length > 130 ? "…" : ""}</div></div><div class="sc-item-a"><button class="btn light sm" data-scedit="${sc.id}">Edit</button><button class="btn danger sm" data-scdel="${sc.id}">Delete</button></div></div>`).join("") : `<div class="muted" style="font-size:13px;padding:10px">None yet. Add your own call templates — schemes, offers, or any message you want to place on a call.</div>`;
+  modal("📝 Call Scripts & Templates", `
     <p class="muted" style="font-size:12px;line-height:1.6;margin-bottom:12px">Placeholders auto-fill per lead: <code>{name}</code> <code>{customer}</code> <code>{cp}</code> <code>{project}</code> <code>{stage}</code> <code>{date}</code> <code>{caller}</code>.</p>
-    <div class="cc-h">Call templates <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— the fixed calls; edit their exact wording</span></div>
+    <div class="cc-h">Built-in templates <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— the standard calls; edit their wording (used for automatic calls too)</span></div>
     <div class="sc-list">${tmplRows}</div>
-    <div class="cc-h" style="margin-top:16px">Special messages <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— schemes / offers, shown as "Any Special Message" in the picker</span></div>
+    <div class="cc-h" style="margin-top:16px">Your templates <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— add / edit / delete your own; they appear in the 📞 call picker</span></div>
     <div class="sc-list">${rows}</div>
-    <div class="modal-foot"><button class="btn outline" data-close2>Back</button><button class="btn primary" id="scAdd">+ Add special message</button></div>`, true);
+    <div class="modal-foot"><button class="btn outline" data-close2>Back</button><button class="btn primary" id="scAdd">+ Add new template</button></div>`, true);
   document.querySelector("[data-close2]").onclick = () => openCallCenter();
   document.getElementById("scAdd").onclick = () => openScriptEdit(null);
   document.querySelectorAll("[data-tmpledit]").forEach((b) => b.onclick = () => openTemplateEdit(b.getAttribute("data-tmpledit")));
   document.querySelectorAll("[data-scedit]").forEach((b) => b.onclick = () => openScriptEdit(b.getAttribute("data-scedit")));
-  document.querySelectorAll("[data-scdel]").forEach((b) => b.onclick = () => { if (confirm("Delete this script?")) { DB.call_scripts = callScripts().filter((x) => x.id !== b.getAttribute("data-scdel")); save(); openScriptManager(); } });
+  document.querySelectorAll("[data-scdel]").forEach((b) => b.onclick = () => { if (confirm("Delete this template permanently?")) { DB.call_scripts = callScripts().filter((x) => x.id !== b.getAttribute("data-scdel")); save(); openScriptManager(); } });
 }
 function openTemplateEdit(kind) {
   const cur = callTemplate(kind), label = (TEMPLATE_META.find((t) => t[0] === kind) || [, "Template"])[1];
@@ -2745,20 +2746,22 @@ function openTemplateEdit(kind) {
   document.getElementById("tmplSave").onclick = () => { const t = fieldVal("tmpl_msg").trim(); if (!t) return toast("Message can't be empty"); DB.call_templates = DB.call_templates || {}; DB.call_templates[kind] = t; save(); toast("Template saved ✓"); openScriptManager(); };
 }
 function openScriptEdit(id) {
-  const sc = id ? callScripts().find((x) => x.id === id) : { title: "", message: "" };
-  modal(id ? "Edit script" : "New script", `
+  const sc = id ? callScripts().find((x) => x.id === id) : { title: "", message: "", party: "any" };
+  const psel = (val, lbl) => `<option value="${val}" ${(sc.party || "any") === val ? "selected" : ""}>${lbl}</option>`;
+  modal(id ? "Edit call template" : "New call template", `
     <div class="lf"><div class="lf-sec"><div class="lf-sec-body"><div class="form-grid">
-      <div class="field full"><label>Title</label><input id="sc_title" autocomplete="off" value="${esc(sc.title || "")}" placeholder="e.g. Diwali Offer 2026"/></div>
-      <div class="field full"><label>Message (what the AI will say)</label><textarea id="sc_msg" rows="6" placeholder="Hi {name}, this is Ashiesh Sharma. We have a limited-period offer on {project} this festive season…">${esc(sc.message || "")}</textarea></div>
-    </div><p class="muted" style="font-size:11px;margin-top:6px">Placeholders auto-fill per lead: {name}, {project}, {cp}, {stage}, {date}</p></div></div></div>
-    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="scSave">Save script</button></div>`, true);
+      <div class="field"><label>Title (shown in the picker)</label><input id="sc_title" autocomplete="off" value="${esc(sc.title || "")}" placeholder="e.g. Diwali Offer 2026"/></div>
+      <div class="field"><label>Show for</label><select id="sc_party">${psel("any", "Any (customer or CP)")}${psel("customer", "Customer only")}${psel("broker", "Channel Partner only")}</select></div>
+      <div class="field full"><label>Message (what the AI will say)</label><textarea id="sc_msg" rows="6" placeholder="Hi {name}, this is {caller} from Ashiesh Sharma's team. We have a limited-period offer on {project}…">${esc(sc.message || "")}</textarea></div>
+    </div><p class="muted" style="font-size:11px;margin-top:6px">Placeholders auto-fill per lead: {name} {customer} {cp} {project} {stage} {date} {caller}</p></div></div></div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn primary" id="scSave">Save template</button></div>`, true);
   document.querySelector("[data-close2]").onclick = () => openScriptManager();
   document.getElementById("scSave").onclick = () => {
-    const title = fieldVal("sc_title").trim(), message = fieldVal("sc_msg").trim();
+    const title = fieldVal("sc_title").trim(), message = fieldVal("sc_msg").trim(), party = fieldVal("sc_party") || "any";
     if (!title || !message) return toast("Add a title and a message");
-    if (id) { const x = callScripts().find((z) => z.id === id); if (x) { x.title = title; x.message = message; } }
-    else callScripts().push({ id: "SC-" + Date.now().toString(36), title, message });
-    save(); toast("Script saved ✓"); openScriptManager();
+    if (id) { const x = callScripts().find((z) => z.id === id); if (x) { x.title = title; x.message = message; x.party = party; } }
+    else callScripts().push({ id: "SC-" + Date.now().toString(36), title, message, party });
+    save(); toast("Template saved ✓"); openScriptManager();
   };
 }
 
