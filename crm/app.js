@@ -2420,7 +2420,7 @@ function openLightbox(src) {
    so nobody is ever bombarded. Real dialing happens only via the
    Firebase Function after you connect ElevenLabs + Twilio.
    ============================================================ */
-const CALL_TRIGGERS = { manual: "Manual", enquiry: "Thanks Call (new lead)", visit: "Site-visit Call", reminder: "Reminder Call (CP)" };
+const CALL_TRIGGERS = { manual: "Manual", enquiry: "Thanks Call (new lead)", visit: "Follow-up / Feedback", reminder: "Reminder Call (CP)" };
 const CALL_STATUS_LABELS = { logged: "Logged (safe)", pending: "Call Queued", queued: "Call Queued", sent: "Call Sent ✓", skipped: "Skipped", failed: "Call Failed" };
 function callStatusLabel(s) { return CALL_STATUS_LABELS[s] || s; }
 // Reusable message scripts the user manages (schemes/offers/updates) — {DB.call_scripts}.
@@ -2460,6 +2460,8 @@ function callSettings() {
     winStart: d.winStart != null ? d.winStart : 9,            // calling window start (IST hour)
     winEnd: d.winEnd != null ? d.winEnd : 20,                 // calling window end (IST hour, exclusive)
     globalDailyCap: d.globalDailyCap || 100,                  // safety valve across ALL numbers
+    agentId: d.agentId || "",                                 // single ElevenLabs agent override (blank = default)
+    callerName: d.callerName || "Neha",                       // the persona name the agent introduces itself as
   };
 }
 function saveCallSettings(patch) { DB.call_settings = Object.assign({}, DB.call_settings || {}, patch); save(); }
@@ -2513,7 +2515,7 @@ function callGuard(o) {
 }
 function requestCall(o) {
   const s = callSettings(), g = callGuard(o);
-  const e = { id: "CALL-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: now(), ts_ms: Date.now(), party: o.party, name: o.name || "", number: callDigits(o.number), leadId: o.leadId || "", trigger: o.trigger, mode: s.liveMode ? "live" : "safe", customer_name: o.customer_name || "", broker_name: o.broker_name || "", project: o.project || "", meeting_time: o.meeting_time || "", greeting: o.greeting || "", client_ref: o.client_ref || "", message: o.message || "" };
+  const e = { id: "CALL-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), ts: now(), ts_ms: Date.now(), party: o.party, name: o.name || "", number: callDigits(o.number), leadId: o.leadId || "", trigger: o.trigger, mode: s.liveMode ? "live" : "safe", objective: o.objective || "", customer_name: o.customer_name || "", broker_name: o.broker_name || "", project: o.project || "", meeting_time: o.meeting_time || "", followup_kind: o.followup_kind || "", followup_date: o.followup_date || "", greeting: o.greeting || "", client_ref: o.client_ref || "", message: o.message || "" };
   if (!g.ok) { e.status = "skipped"; e.reason = g.reason; callLog().unshift(e); save(); return { ok: false, reason: g.reason }; }
   if (s.liveMode) {
     e.status = "queued"; e.reason = "Queued for ElevenLabs"; callLog().unshift(e); save();
@@ -2524,11 +2526,52 @@ function requestCall(o) {
   return { ok: true, live: false };
 }
 // Fire an auto trigger for a lead (called on save). All guards apply; skips are logged quietly.
+// ---- Objective-driven calling ----
+// The CRM sends an OBJECTIVE + a natural opening line; the agent's master prompt
+// runs the rest of the conversation intelligently (persona: Neha=CP, Suji=Customer).
+const CALL_OBJECTIVES = {
+  cust_thanks:   { party: "customer", objective: "Customer Thanks",           label: "🙏 Thanks Call",             sub: "Thank a new lead for their interest" },
+  cust_followup: { party: "customer", objective: "Customer Follow-up",        label: "🔄 Follow-up / Feedback",    sub: "Follow up & hear how it's going" },
+  cust_reminder: { party: "customer", objective: "Customer Reminder",         label: "⏰ Reminder Call",           sub: "Confirm the scheduled follow-up" },
+  cp_reminder:   { party: "broker",   objective: "CP Meeting Reminder",       label: "⏰ Reminder Call",           sub: "Confirm today's meeting" },
+  cp_thanks:     { party: "broker",   objective: "CP Thanks After Meeting",   label: "🙏 Thank-you Call",          sub: "Thank the CP after a meeting" },
+  cp_meeting:    { party: "broker",   objective: "CP Cold Call — Fix Meeting", label: "❄️ Cold Call — fix meeting", sub: "Introduce & fix a meeting with Ashish" },
+};
+// One agent, one caller persona (editable in Call Center → Caller name).
+function callPersona() { return (callSettings().callerName || "Neha"); }
+function callOpening(kind, v) {
+  const o = CALL_OBJECTIVES[kind] || {}; const party = o.party || "customer";
+  const who = callPersona();
+  const name = party === "broker" ? (v.broker_name || "there") : (v.customer_name || "there");
+  const project = v.project || "the project", stage = v.followup_kind || "our discussion", date = v.followup_date || "the scheduled date";
+  switch (kind) {
+    case "cust_thanks":    return `Hi ${name}, this is ${who} calling from Ashish Sharma's team. Thank you so much for showing interest in ${project}.`;
+    case "cust_followup":  return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just wanted to personally follow up regarding ${project}, and hear how your experience has been so far.`;
+    case "cust_feedback":  return `Hi ${name}, this is ${who} from Ashish Sharma's team. I just wanted to personally check how your experience has been so far.`;
+    case "cust_reminder":  return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just a quick reminder regarding your ${stage} scheduled for ${date}.`;
+    case "cust_sitevisit": return `Hi ${name}, this is ${who} from Ashish Sharma's team. Delighted your site visit to ${project} is set for ${date}.`;
+    case "cust_postvisit": return `Hi ${name}, this is ${who} from Ashish Sharma's team. Thank you for visiting ${project} — I just wanted to check how you found it.`;
+    case "cust_reengage":  return `Hi ${name}, this is ${who} from Ashish Sharma's team. It has been a little while, so I just wanted to reconnect regarding ${project}.`;
+    case "cp_meeting":     return `Hi ${name}, this is ${who} calling from Ashish Sharma's team at B P T P. Hope I am catching you at a good time?`;
+    case "cp_followup":    return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just following up on our last conversation regarding ${project}.`;
+    case "cp_reminder":    return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just a quick reminder about your meeting with Ashish regarding ${project} on ${date}.`;
+    case "cp_coordination":return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just wanted to coordinate regarding ${v.customer_name || "your client"} and ${project}.`;
+    case "cp_reengage":    return `Hi ${name}, this is ${who} from Ashish Sharma's team. It has been a little while, so I just wanted to reconnect.`;
+    case "cp_thanks":      return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just wanted to thank you for taking the time to meet Ashish.`;
+    case "cp_relationship":return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just a quick courtesy call to stay in touch.`;
+    default: return `Hi ${name}, this is ${who} from Ashish Sharma's team.`;
+  }
+}
+function autoKind(trigger, party) {
+  if (party === "broker") return trigger === "enquiry" ? "cp_meeting" : trigger === "visit" ? "cp_thanks" : "cp_reminder";
+  return trigger === "enquiry" ? "cust_thanks" : trigger === "visit" ? "cust_followup" : "cust_reminder";
+}
 function autoCallForLead(lead, trigger) {
   if (!lead) return; const s = callSettings(); if (!s.triggers[trigger]) return;
   const v = callVars(lead);
-  if (lead.call_customer && lead.customer_mobile) requestCall(Object.assign({ party: "customer", number: lead.customer_mobile, name: lead.customer_name, leadId: lead.id, trigger, message: callMessage(trigger, "customer", v) }, v));
-  if (lead.call_broker && lead.source_mobile) requestCall(Object.assign({ party: "broker", number: lead.source_mobile, name: lead.source_name, leadId: lead.id, trigger, message: callMessage(trigger, "broker", v) }, v));
+  const fire = (party, number, name) => { const k = autoKind(trigger, party); requestCall(Object.assign({ party, number, name, leadId: lead.id, trigger, objective: (CALL_OBJECTIVES[k] || {}).objective || "", message: callOpening(k, v) }, v)); };
+  if (lead.call_customer && lead.customer_mobile) fire("customer", lead.customer_mobile, lead.customer_name);
+  if (lead.call_broker && lead.source_mobile) fire("broker", lead.source_mobile, lead.source_name);
 }
 // The pre-written spoken scripts for a manual call, by chosen type.
 function manualCallMessage(kind, v) {
@@ -2551,9 +2594,7 @@ function manualCall(leadId, party) {
   const number = party === "customer" ? l.customer_mobile : l.source_mobile;
   const name = party === "customer" ? l.customer_name : l.source_name;
   if (!callDigits(number)) return toast("No mobile number on file for this " + (party === "customer" ? "customer" : "CP"));
-  const base = party === "customer"
-    ? [["cust_thanks", "🙏 Thanks Call", "First-time lead — thank them for their interest"], ["cust_feedback", "💬 Feedback Call", "Check in and ask how their experience has been"], ["cust_reminder", "⏰ Reminder Call", "Remind about the next scheduled follow-up"]]
-    : [["cp_reminder", "⏰ Reminder Call", "Remind the CP about today's meeting with the client"], ["cp_thanks", "🤝 Thank-you Call", "Thank the CP for their support & coordination"]];
+  const base = Object.keys(CALL_OBJECTIVES).filter((k) => CALL_OBJECTIVES[k].party === party).map((k) => [k, CALL_OBJECTIVES[k].label, CALL_OBJECTIVES[k].sub]);
   const custom = callScripts().map((sc) => ["script:" + sc.id, "📝 " + sc.title, "Your custom script"]);
   const opts = base.concat(custom);
   modal("📞 Choose call type · " + (esc(name) || esc(callDigits(number))), `
@@ -2569,10 +2610,10 @@ function placeManualCall(leadId, party, kind) {
   const s = callSettings(), v = callVars(l);
   const who = (name || (party === "customer" ? "customer" : "channel partner")) + " · " + callDigits(number);
   if (!confirm(`${s.liveMode ? "Place an AI voice call" : "Log a test call (SAFE MODE — no real call is made)"} to ${who}?`)) return;
-  let message;
-  if (kind.indexOf("script:") === 0) { const sc = callScripts().find((x) => x.id === kind.slice(7)); message = sc ? fillScript(sc.message, v, party) : manualCallMessage("default", v); }
-  else message = manualCallMessage(kind, v);
-  const r = requestCall(Object.assign({ party, number, name, leadId, trigger: "manual", message }, v));
+  let message, objective;
+  if (kind.indexOf("script:") === 0) { const sc = callScripts().find((x) => x.id === kind.slice(7)); message = sc ? fillScript(sc.message, v, party) : callOpening("default", v); objective = "Custom Script"; }
+  else { message = callOpening(kind, v); objective = (CALL_OBJECTIVES[kind] || {}).objective || "Call"; }
+  const r = requestCall(Object.assign({ party, number, name, leadId, trigger: "manual", objective, message }, v));
   if (r.ok) toast(s.liveMode ? "📞 Call queued" : "✓ Safe Mode: logged (no real call made)");
   else toast("Not called — " + r.reason);
 }
@@ -2604,7 +2645,7 @@ function openCallCenter(quiet) {
       <div class="cc-grid">
         <div class="cc-card${s.autoEnabled ? "" : " cc-dim"}">
           <div class="cc-h">🧑 Automatic — Customer</div>
-          ${tgl("enquiry", "Thanks Call (new lead)")}${tgl("visit", "Site-visit Call")}
+          ${tgl("enquiry", "Thanks Call (new lead)")}${tgl("visit", "Follow-up / Feedback (after visit)")}
         </div>
         <div class="cc-card${s.autoEnabled ? "" : " cc-dim"}">
           <div class="cc-h">🤝 Automatic — Channel Partner</div>
@@ -2620,6 +2661,12 @@ function openCallCenter(quiet) {
           <div class="cc-h">Do-Not-Call list</div>
           <div class="cc-dnc">${callDnc().length ? callDnc().map((d) => `<span class="cc-dnc-chip">${esc(callDigits(d))}<button data-dncdel="${esc(callDigits(d))}">×</button></span>`).join("") : `<span class="muted" style="font-size:12px">Empty</span>`}</div>
           <div class="cc-dnc-add"><input id="ccDncNum" placeholder="Add a number to block" inputmode="tel"/><button class="btn light sm" id="ccDncAdd">Block</button></div>
+        </div>
+        <div class="cc-card">
+          <div class="cc-h">AI agent (ElevenLabs)</div>
+          <label class="cc-lim" style="flex-direction:column;align-items:stretch;gap:4px">Caller name (persona) <input id="ccCallerName" placeholder="e.g. Neha" value="${esc(s.callerName || "Neha")}" style="width:100%"/></label>
+          <label class="cc-lim" style="flex-direction:column;align-items:stretch;gap:4px">Agent ID override <input id="ccAgentId" placeholder="agent_… (optional)" value="${esc(s.agentId || "")}" style="width:100%"/></label>
+          <div class="muted" style="font-size:10.5px;line-height:1.5">One agent for all calls. Blank Agent ID = uses your deployed default agent.</div>
         </div>
       </div>
 
@@ -2639,6 +2686,8 @@ function openCallCenter(quiet) {
   document.querySelectorAll("[data-cctrig]").forEach((cb) => cb.onchange = () => { const tr = Object.assign({}, callSettings().triggers); tr[cb.getAttribute("data-cctrig")] = cb.checked; saveCallSettings({ triggers: tr }); });
   const numSet = (id, key, lo, hi) => { const el = document.getElementById(id); if (el) el.onchange = () => { let v = Math.max(lo, Math.min(hi, Number(el.value) || lo)); el.value = v; saveCallSettings({ [key]: v }); }; };
   numSet("ccPerDay", "perDayMax", 1, 5); numSet("ccCool", "cooldownH", 1, 72); numSet("ccWinS", "winStart", 0, 23); numSet("ccWinE", "winEnd", 1, 24);
+  const txtSet = (id, key) => { const el = document.getElementById(id); if (el) el.onchange = () => saveCallSettings({ [key]: el.value.trim() }); };
+  txtSet("ccAgentId", "agentId"); txtSet("ccCallerName", "callerName");
   const add = document.getElementById("ccDncAdd"); if (add) add.onclick = () => { const n = callDigits(document.getElementById("ccDncNum").value); if (n.length < 10) return toast("Enter a valid number"); if (!callDnc().some((d) => callDigits(d) === n)) callDnc().push(n); save(); openCallCenter(); };
   document.querySelectorAll("[data-dncdel]").forEach((b) => b.onclick = () => { const n = b.getAttribute("data-dncdel"); DB.call_dnc = callDnc().filter((d) => callDigits(d) !== n); save(); openCallCenter(); });
   document.getElementById("ccClear").onclick = () => { if (confirm("Clear the whole call history? (Settings and limits are kept.)")) { DB.calls = []; save(); openCallCenter(); } };

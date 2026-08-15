@@ -52,6 +52,7 @@ async function getCallCfg() {
       perDayMax: c.perDayMax || d.perDayMax,
       cooldownH: c.cooldownH || d.cooldownH,
       globalDailyCap: c.globalDailyCap || d.globalDailyCap,
+      agentId: c.agentId || "",
     };
   } catch (e) { return d; }
 }
@@ -87,19 +88,25 @@ async function serverGuard(job, cfg) {
   return null;
 }
 
-async function placeElevenLabsCall(job) {
+async function placeElevenLabsCall(job, cfg) {
+  // One agent for all calls; optional override from Call Center, else the deployed default.
+  const agentId = (cfg && cfg.agentId) || ELEVENLABS_AGENT_ID.value();
   const body = {
-    agent_id: ELEVENLABS_AGENT_ID.value(),
+    agent_id: agentId,
     agent_phone_number_id: ELEVENLABS_PHONE_ID.value(),
     to_number: e164IN(job.number),
     call_recording_enabled: true,   // also have Twilio record the call so you can listen later
     conversation_initiation_client_data: {
       dynamic_variables: {
-        message: job.message || "",
+        message: job.message || "",              // the natural opening line
+        objective: job.objective || "",          // e.g. "CP Meeting Fix" — drives the agent's goal
         customer_name: job.customer_name || job.name || "there",
+        cp_name: job.broker_name || "",
         broker_name: job.broker_name || "",
         client_ref: job.client_ref || "your client",
         project: job.project || "",
+        next_stage: job.followup_kind || "",
+        next_date: job.followup_date || (job.meeting_time || "").slice(0, 10) || "",
         meeting_time: job.meeting_time || "",
         greeting: job.greeting || "",
         party: job.party || "",
@@ -130,7 +137,7 @@ exports.dialQueuedCall = onDocumentCreated(
       const cfg = await getCallCfg();
       const reason = await serverGuard(job, cfg);
       if (reason) { console.log("guard skipped:", reason); await snap.ref.update({ status: "skipped", reason, handledAt: Date.now() }); return; }
-      const out = await placeElevenLabsCall(job);
+      const out = await placeElevenLabsCall(job, cfg);
       await db.collection("call_history").add({
         number: digits(job.number), party: job.party || "", trigger: job.trigger || "",
         ts: Date.now(), dayIST: istDay(), conversationId: out.conversation_id || "", callSid: out.callSid || "",
@@ -179,11 +186,11 @@ exports.reminderSweep = onSchedule(
       const client_ref = l.customer_name || "your client";
       const stage = l.followup_kind || "site meeting";
       const date = String(l.followup_at || "").slice(0, 10) || "today";
-      const message = `Hi ${l.source_name || "there"}, this is Ashiesh Sharma. Just a quick reminder, with thanks, regarding our scheduled ${stage} on ${date} with ${client_ref} for ${project || "the project"}. I really appreciate your support and coordination. Let us make this opportunity work together and create a great experience for the customer. Looking forward to the discussion. Thank you, and speak with you soon.`;
+      const message = `Hi ${l.source_name || "there"}, this is our team calling from Ashish Sharma's office. Just a quick reminder about your meeting with Ashish regarding ${project || "the project"} on ${date}.`;
       await db.collection("call_queue").add({
         status: "pending", createdAt: Date.now(), party: "broker", number: num, name: l.source_name || "",
-        broker_name: l.source_name || "", customer_name: l.customer_name || "", client_ref, project,
-        meeting_time: String(l.followup_at), greeting: "Good Morning", trigger: "reminder", leadId: l.id, message,
+        objective: "CP Meeting Reminder", broker_name: l.source_name || "", customer_name: l.customer_name || "", client_ref, project,
+        followup_kind: stage, followup_date: date, meeting_time: String(l.followup_at), greeting: "Good Morning", trigger: "reminder", leadId: l.id, message,
       });
     }
   }
