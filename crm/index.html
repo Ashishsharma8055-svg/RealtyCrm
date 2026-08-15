@@ -71,7 +71,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
     import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, updatePassword, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, addDoc, collection, getDocs, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, addDoc, deleteDoc, collection, getDocs, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
     // ============================================================
     //  RUN MODE — flip this ONE line:
     //    "local" = runs instantly in VS Code, no setup. Login: admin / admin123
@@ -133,6 +133,8 @@
         // Read back the real outcome of recent calls (set by the Cloud Function) so the
         // CRM's Call history can show live results (sent / failed / skipped).
         loadCalls: async () => { try { const snap = await getDocs(query(collection(db, "call_queue"), orderBy("createdAt", "desc"), limit(150))); return snap.docs.map((d) => Object.assign({ _id: d.id }, d.data())); } catch (e) { return []; } },
+        // Wipe the cloud calling records (resets cooldown + daily counts). Used by "Clear history".
+        clearCallData: async () => { try { for (const coll of ["call_queue", "call_history", "reminders_sent"]) { const snap = await getDocs(collection(db, coll)); await Promise.all(snap.docs.map((d) => deleteDoc(d.ref))); } return true; } catch (e) { return false; } },
       };
     } catch (e) { console.warn("Firebase init failed — falling back to local storage.", e); }
     window.dispatchEvent(new Event("rcrm-fb-ready"));
@@ -147,6 +149,6 @@
   <script src="../js/data.js?v=2"></script>
   <!-- SheetJS — same library admin.html uses, for Excel Template/Import/Export. -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="app.js?v=55"></script>
+  <script src="app.js?v=56"></script>
 </body>
 </html>

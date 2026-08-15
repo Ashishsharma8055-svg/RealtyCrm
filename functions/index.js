@@ -50,7 +50,7 @@ async function getCallCfg() {
       winStart: c.winStart != null ? c.winStart : d.winStart,
       winEnd: c.winEnd != null ? c.winEnd : d.winEnd,
       perDayMax: c.perDayMax || d.perDayMax,
-      cooldownH: c.cooldownH || d.cooldownH,
+      cooldownH: c.cooldownH != null ? c.cooldownH : d.cooldownH,
       globalDailyCap: c.globalDailyCap || d.globalDailyCap,
       agentId: c.agentId || "",
     };

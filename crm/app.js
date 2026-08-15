@@ -2456,7 +2456,7 @@ function callSettings() {
     manualEnabled: d.manualEnabled != null ? !!d.manualEnabled : true, // master switch for the manual call button
     triggers: Object.assign({ manual: true, enquiry: true, visit: true, reminder: true }, d.triggers || {}),
     perDayMax: d.perDayMax || 1,                              // max calls per person per day
-    cooldownH: d.cooldownH || 20,                             // min hours between calls to one number
+    cooldownH: d.cooldownH != null ? d.cooldownH : 20,        // min hours between calls to one number (0 = off)
     winStart: d.winStart != null ? d.winStart : 9,            // calling window start (IST hour)
     winEnd: d.winEnd != null ? d.winEnd : 20,                 // calling window end (IST hour, exclusive)
     globalDailyCap: d.globalDailyCap || 100,                  // safety valve across ALL numbers
@@ -2662,7 +2662,7 @@ function openCallCenter(quiet) {
         <div class="cc-card">
           <div class="cc-h">Anti-bombard limits</div>
           <label class="cc-lim">Max calls per person / day <input type="number" min="1" max="5" id="ccPerDay" value="${s.perDayMax}"/></label>
-          <label class="cc-lim">Cooldown between calls (hours) <input type="number" min="1" max="72" id="ccCool" value="${s.cooldownH}"/></label>
+          <label class="cc-lim">Cooldown between calls (hours) <input type="number" min="0" max="72" id="ccCool" value="${s.cooldownH}"/></label>
           <label class="cc-lim">Calling window (IST) <span><input type="number" min="0" max="23" id="ccWinS" value="${s.winStart}"/>–<input type="number" min="0" max="24" id="ccWinE" value="${s.winEnd}"/></span></label>
         </div>
         <div class="cc-card">
@@ -2693,12 +2693,17 @@ function openCallCenter(quiet) {
   document.getElementById("ccManual").onchange = (e) => { saveCallSettings({ manualEnabled: e.target.checked }); toast("Manual calls " + (e.target.checked ? "ON" : "OFF")); };
   document.querySelectorAll("[data-cctrig]").forEach((cb) => cb.onchange = () => { const tr = Object.assign({}, callSettings().triggers); tr[cb.getAttribute("data-cctrig")] = cb.checked; saveCallSettings({ triggers: tr }); });
   const numSet = (id, key, lo, hi) => { const el = document.getElementById(id); if (el) el.onchange = () => { let v = Math.max(lo, Math.min(hi, Number(el.value) || lo)); el.value = v; saveCallSettings({ [key]: v }); }; };
-  numSet("ccPerDay", "perDayMax", 1, 5); numSet("ccCool", "cooldownH", 1, 72); numSet("ccWinS", "winStart", 0, 23); numSet("ccWinE", "winEnd", 1, 24);
+  numSet("ccPerDay", "perDayMax", 1, 20); numSet("ccCool", "cooldownH", 0, 72); numSet("ccWinS", "winStart", 0, 23); numSet("ccWinE", "winEnd", 1, 24);
   const txtSet = (id, key) => { const el = document.getElementById(id); if (el) el.onchange = () => saveCallSettings({ [key]: el.value.trim() }); };
   txtSet("ccAgentId", "agentId"); txtSet("ccCallerName", "callerName");
   const add = document.getElementById("ccDncAdd"); if (add) add.onclick = () => { const n = callDigits(document.getElementById("ccDncNum").value); if (n.length < 10) return toast("Enter a valid number"); if (!callDnc().some((d) => callDigits(d) === n)) callDnc().push(n); save(); openCallCenter(); };
   document.querySelectorAll("[data-dncdel]").forEach((b) => b.onclick = () => { const n = b.getAttribute("data-dncdel"); DB.call_dnc = callDnc().filter((d) => callDigits(d) !== n); save(); openCallCenter(); });
-  document.getElementById("ccClear").onclick = () => { if (confirm("Clear the whole call history? (Settings and limits are kept.)")) { DB.calls = []; save(); openCallCenter(); } };
+  document.getElementById("ccClear").onclick = async () => {
+    if (!confirm("Clear the call history AND reset the cloud limits (cooldown + daily count)? Your settings are kept. Useful for testing.")) return;
+    DB.calls = []; save();
+    if (typeof CLOUD !== "undefined" && CLOUD && CLOUD.clearCallData) { toast("Resetting…"); try { await CLOUD.clearCallData(); } catch (e) {} }
+    toast("Call history & limits reset ✓"); openCallCenter();
+  };
   const scr = document.getElementById("ccScripts"); if (scr) scr.onclick = openScriptManager;
   const rf = document.getElementById("ccRefresh"); if (rf) rf.onclick = () => openCallCenter();
   // Pull live results from the cloud, then re-render once (quiet = no re-fetch → no loop).
