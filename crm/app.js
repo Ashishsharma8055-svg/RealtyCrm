@@ -2461,7 +2461,7 @@ function callSettings() {
     winEnd: d.winEnd != null ? d.winEnd : 20,                 // calling window end (IST hour, exclusive)
     globalDailyCap: d.globalDailyCap || 100,                  // safety valve across ALL numbers
     agentId: d.agentId || "",                                 // single ElevenLabs agent override (blank = default)
-    callerName: d.callerName || "Ashish Sharma",              // the name the agent introduces itself as (try "Ashiesh Sharma" for clearer TTS)
+    callerName: d.callerName || "Neha",                       // the agent's name (introduces itself as "…from Ashiesh Sharma's team")
   };
 }
 function saveCallSettings(patch) { DB.call_settings = Object.assign({}, DB.call_settings || {}, patch); save(); }
@@ -2534,26 +2534,27 @@ const CALL_OBJECTIVES = {
   cust_feedback: { party: "customer", objective: "Customer Feedback",   label: "💬 Feedback Call",         sub: "Ask how their experience has been" },
   cust_reminder: { party: "customer", objective: "Customer Reminder",   label: "⏰ Follow-up / Reminder",  sub: "Remind about the meeting / visit" },
   cust_reengage: { party: "customer", objective: "Customer Re-engage",  label: "❄️ Re-engage (cooling lead)", sub: "Warmly re-open a quiet lead" },
-  cp_thanks:     { party: "broker",   objective: "CP Thanks",           label: "🙏 Thank-you Call",        sub: "Thank CP for the customer's visit / meeting" },
-  cp_reminder:   { party: "broker",   objective: "CP Reminder",         label: "⏰ Follow-up / Reminder",  sub: "Remind about the customer's meeting" },
-  cp_engage:     { party: "broker",   objective: "CP Engagement",       label: "🚀 Engagement Call",       sub: "Invite CP to drive meetings with Ashish" },
+  cp_thanks:     { party: "broker",   objective: "CP Thanks & Feedback", label: "🙏 Thanks & Feedback",     sub: "Thank the CP & ask for their input" },
+  cp_reminder:   { party: "broker",   objective: "CP Reminder",         label: "⏰ Reminder Call",          sub: "Remind about the customer's meeting" },
+  cp_engage:     { party: "broker",   objective: "CP Engagement",       label: "🚀 Engagement / Re-engage", sub: "Reconnect an active CP & fix a meeting" },
 };
 // One agent, one caller persona (editable in Call Center → Caller name).
-function callPersona() { return (callSettings().callerName || "Ashish Sharma"); }
+function callPersona() { return (callSettings().callerName || "Neha"); }
 // FIXED scripts — the agent simply reads the message and ends the call (no improvising).
 function callOpening(kind, v) {
   const who = callPersona();
   const cn = v.customer_name || "there", cp = v.broker_name || "there";
   const project = v.project || "the project", stage = v.followup_kind || "meeting", date = v.followup_date || "the scheduled date";
+  const intro = (name) => `Hi ${name}, this is ${who} from Ashiesh Sharma's team at B P T P.`;
   switch (kind) {
-    case "cust_thanks":   return `Dear ${cn}, thank you so much for showing interest in our ${project}. It truly means a lot to me. This is ${who}, and I will personally make sure you receive the right guidance and complete assistance at every step. It would be my pleasure to help you find exactly what you are looking for. Wishing you a wonderful day ahead.`;
-    case "cust_feedback": return `Dear ${cn}, this is ${who}. I just wanted to personally check in and hear how your experience has been so far. Your honest feedback — about the project, the information shared, or anything I can improve — genuinely matters to me. Thank you for your time; it is always a pleasure to be of service.`;
-    case "cust_reminder": return `Dear ${cn}, this is ${who}. Just a warm reminder, with thanks, about your ${stage} scheduled on ${date}. I am personally looking forward to connecting with you and taking our discussion ahead. Thank you, and I will speak with you soon.`;
-    case "cust_reengage": return `Dear ${cn}, this is ${who}. It has been a little while since we last connected about ${project}, and I did not want you to miss out. Whenever the timing feels right, it would be my pleasure to assist you personally. Please do reach out anytime. Thank you.`;
-    case "cp_thanks":     return `Dear ${cp}, this is ${who}. Thank you so much for coordinating ${cn}'s visit for ${project}. I genuinely value your support and partnership, and I look forward to working closely with you. Thank you, and speak soon.`;
-    case "cp_reminder":   return `Dear ${cp}, this is ${who}. Just a warm reminder, with thanks — we have a ${stage} scheduled on ${date} with ${cn} for ${project}. I truly appreciate your support and coordination, and I am confident we will make this a great opportunity together. I hope for the best, and look forward to it.`;
-    case "cp_engage":     return `Dear ${cp}, this is ${who}. I am opening up a smoother, more rewarding way for channel partners to bring their clients directly to me for B P T P opportunities. I would truly love to have you on board. If you are keen, I would be glad to connect with you personally. Thank you for your time.`;
-    default: return `Dear ${cn}, this is ${who}. Thank you for your time.`;
+    case "cust_thanks":   return `${intro(cn)} Thank you so much for showing interest in ${project}. I will personally make sure you receive the right guidance and complete assistance at every step. It would be my pleasure to help you find exactly what you are looking for. Have a wonderful day.`;
+    case "cust_feedback": return `${intro(cn)} I would like to thank you for showing interest in ${project}. This is a quick feedback call — what did you like the most, and where do you feel we could improve?`;
+    case "cust_reminder": return `${intro(cn)} I wanted to update you about your scheduled ${stage} on ${date} for ${project}. Please let me know if the timing works for you, or if you would like to change it.`;
+    case "cust_reengage": return `Dear ${cn}, this is from Ashiesh Sharma's team at B P T P. It has been a little while since we last connected about ${project}, and I did not want you to miss out. Please let me know if there is anything I am missing, or anything I could do better, so we can re-match your interest with our project.`;
+    case "cp_thanks":     return `${intro(cp)} I would like to thank you for placing your trust in me. I am keen to do my very best for your customer ${cn} for ${project}. Is there anything you would like to share, so I can do it even better next time?`;
+    case "cp_reminder":   return `${intro(cp)} I wanted to remind you about your meeting with your customer ${cn} for ${project} on ${date}. Wishing us a successful and long-term association together, along with this deal.`;
+    case "cp_engage":     return `${intro(cp)} I would love to reconnect and fix a short meeting, so we can share valuable insights with each other and build a strong, long-term association. Would you be open to that?`;
+    default: return `${intro(cn)} Thank you for your time.`;
   }
 }
 function autoKind(trigger, party) {

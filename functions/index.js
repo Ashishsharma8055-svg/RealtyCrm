@@ -186,7 +186,7 @@ exports.reminderSweep = onSchedule(
       const client_ref = l.customer_name || "your client";
       const stage = l.followup_kind || "site meeting";
       const date = String(l.followup_at || "").slice(0, 10) || "today";
-      const message = `Dear ${l.source_name || "there"}, this is Ashish Sharma. Just a warm reminder, with thanks — we have a ${stage} scheduled on ${date} with ${client_ref} for ${project || "the project"}. I truly appreciate your support and coordination, and I am confident we will make this a great opportunity together. I hope for the best, and look forward to it.`;
+      const message = `Hi ${l.source_name || "there"}, this is Neha from Ashiesh Sharma's team at B P T P. I wanted to remind you about your meeting with your customer ${client_ref} for ${project || "the project"} on ${date}. Wishing us a successful and long-term association together, along with this deal.`;
       await db.collection("call_queue").add({
         status: "pending", createdAt: Date.now(), party: "broker", number: num, name: l.source_name || "",
         objective: "CP Meeting Reminder", broker_name: l.source_name || "", customer_name: l.customer_name || "", client_ref, project,
