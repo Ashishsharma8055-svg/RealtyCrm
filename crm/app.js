@@ -2461,7 +2461,7 @@ function callSettings() {
     winEnd: d.winEnd != null ? d.winEnd : 20,                 // calling window end (IST hour, exclusive)
     globalDailyCap: d.globalDailyCap || 100,                  // safety valve across ALL numbers
     agentId: d.agentId || "",                                 // single ElevenLabs agent override (blank = default)
-    callerName: d.callerName || "Neha",                       // the persona name the agent introduces itself as
+    callerName: d.callerName || "Ashish Sharma",              // the name the agent introduces itself as (try "Ashiesh Sharma" for clearer TTS)
   };
 }
 function saveCallSettings(patch) { DB.call_settings = Object.assign({}, DB.call_settings || {}, patch); save(); }
@@ -2530,41 +2530,35 @@ function requestCall(o) {
 // The CRM sends an OBJECTIVE + a natural opening line; the agent's master prompt
 // runs the rest of the conversation intelligently (persona: Neha=CP, Suji=Customer).
 const CALL_OBJECTIVES = {
-  cust_thanks:   { party: "customer", objective: "Customer Thanks",           label: "🙏 Thanks Call",             sub: "Thank a new lead for their interest" },
-  cust_followup: { party: "customer", objective: "Customer Follow-up",        label: "🔄 Follow-up / Feedback",    sub: "Follow up & hear how it's going" },
-  cust_reminder: { party: "customer", objective: "Customer Reminder",         label: "⏰ Reminder Call",           sub: "Confirm the scheduled follow-up" },
-  cp_reminder:   { party: "broker",   objective: "CP Meeting Reminder",       label: "⏰ Reminder Call",           sub: "Confirm today's meeting" },
-  cp_thanks:     { party: "broker",   objective: "CP Thanks After Meeting",   label: "🙏 Thank-you Call",          sub: "Thank the CP after a meeting" },
-  cp_meeting:    { party: "broker",   objective: "CP Cold Call — Fix Meeting", label: "❄️ Cold Call — fix meeting", sub: "Introduce & fix a meeting with Ashish" },
+  cust_thanks:   { party: "customer", objective: "Customer Thanks",    label: "🙏 Thanks Call",           sub: "Build trust — thank them for their interest" },
+  cust_feedback: { party: "customer", objective: "Customer Feedback",   label: "💬 Feedback Call",         sub: "Ask how their experience has been" },
+  cust_reminder: { party: "customer", objective: "Customer Reminder",   label: "⏰ Follow-up / Reminder",  sub: "Remind about the meeting / visit" },
+  cust_reengage: { party: "customer", objective: "Customer Re-engage",  label: "❄️ Re-engage (cooling lead)", sub: "Warmly re-open a quiet lead" },
+  cp_thanks:     { party: "broker",   objective: "CP Thanks",           label: "🙏 Thank-you Call",        sub: "Thank CP for the customer's visit / meeting" },
+  cp_reminder:   { party: "broker",   objective: "CP Reminder",         label: "⏰ Follow-up / Reminder",  sub: "Remind about the customer's meeting" },
+  cp_engage:     { party: "broker",   objective: "CP Engagement",       label: "🚀 Engagement Call",       sub: "Invite CP to drive meetings with Ashish" },
 };
 // One agent, one caller persona (editable in Call Center → Caller name).
-function callPersona() { return (callSettings().callerName || "Neha"); }
+function callPersona() { return (callSettings().callerName || "Ashish Sharma"); }
+// FIXED scripts — the agent simply reads the message and ends the call (no improvising).
 function callOpening(kind, v) {
-  const o = CALL_OBJECTIVES[kind] || {}; const party = o.party || "customer";
   const who = callPersona();
-  const name = party === "broker" ? (v.broker_name || "there") : (v.customer_name || "there");
-  const project = v.project || "the project", stage = v.followup_kind || "our discussion", date = v.followup_date || "the scheduled date";
+  const cn = v.customer_name || "there", cp = v.broker_name || "there";
+  const project = v.project || "the project", stage = v.followup_kind || "meeting", date = v.followup_date || "the scheduled date";
   switch (kind) {
-    case "cust_thanks":    return `Hi ${name}, this is ${who} calling from Ashish Sharma's team. Thank you so much for showing interest in ${project}.`;
-    case "cust_followup":  return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just wanted to personally follow up regarding ${project}, and hear how your experience has been so far.`;
-    case "cust_feedback":  return `Hi ${name}, this is ${who} from Ashish Sharma's team. I just wanted to personally check how your experience has been so far.`;
-    case "cust_reminder":  return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just a quick reminder regarding your ${stage} scheduled for ${date}.`;
-    case "cust_sitevisit": return `Hi ${name}, this is ${who} from Ashish Sharma's team. Delighted your site visit to ${project} is set for ${date}.`;
-    case "cust_postvisit": return `Hi ${name}, this is ${who} from Ashish Sharma's team. Thank you for visiting ${project} — I just wanted to check how you found it.`;
-    case "cust_reengage":  return `Hi ${name}, this is ${who} from Ashish Sharma's team. It has been a little while, so I just wanted to reconnect regarding ${project}.`;
-    case "cp_meeting":     return `Hi ${name}, this is ${who} calling from Ashish Sharma's team at B P T P. Hope I am catching you at a good time?`;
-    case "cp_followup":    return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just following up on our last conversation regarding ${project}.`;
-    case "cp_reminder":    return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just a quick reminder about your meeting with Ashish regarding ${project} on ${date}.`;
-    case "cp_coordination":return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just wanted to coordinate regarding ${v.customer_name || "your client"} and ${project}.`;
-    case "cp_reengage":    return `Hi ${name}, this is ${who} from Ashish Sharma's team. It has been a little while, so I just wanted to reconnect.`;
-    case "cp_thanks":      return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just wanted to thank you for taking the time to meet Ashish.`;
-    case "cp_relationship":return `Hi ${name}, this is ${who} from Ashish Sharma's team. Just a quick courtesy call to stay in touch.`;
-    default: return `Hi ${name}, this is ${who} from Ashish Sharma's team.`;
+    case "cust_thanks":   return `Dear ${cn}, thank you so much for showing interest in our ${project}. It truly means a lot to me. This is ${who}, and I will personally make sure you receive the right guidance and complete assistance at every step. It would be my pleasure to help you find exactly what you are looking for. Wishing you a wonderful day ahead.`;
+    case "cust_feedback": return `Dear ${cn}, this is ${who}. I just wanted to personally check in and hear how your experience has been so far. Your honest feedback — about the project, the information shared, or anything I can improve — genuinely matters to me. Thank you for your time; it is always a pleasure to be of service.`;
+    case "cust_reminder": return `Dear ${cn}, this is ${who}. Just a warm reminder, with thanks, about your ${stage} scheduled on ${date}. I am personally looking forward to connecting with you and taking our discussion ahead. Thank you, and I will speak with you soon.`;
+    case "cust_reengage": return `Dear ${cn}, this is ${who}. It has been a little while since we last connected about ${project}, and I did not want you to miss out. Whenever the timing feels right, it would be my pleasure to assist you personally. Please do reach out anytime. Thank you.`;
+    case "cp_thanks":     return `Dear ${cp}, this is ${who}. Thank you so much for coordinating ${cn}'s visit for ${project}. I genuinely value your support and partnership, and I look forward to working closely with you. Thank you, and speak soon.`;
+    case "cp_reminder":   return `Dear ${cp}, this is ${who}. Just a warm reminder, with thanks — we have a ${stage} scheduled on ${date} with ${cn} for ${project}. I truly appreciate your support and coordination, and I am confident we will make this a great opportunity together. I hope for the best, and look forward to it.`;
+    case "cp_engage":     return `Dear ${cp}, this is ${who}. I am opening up a smoother, more rewarding way for channel partners to bring their clients directly to me for B P T P opportunities. I would truly love to have you on board. If you are keen, I would be glad to connect with you personally. Thank you for your time.`;
+    default: return `Dear ${cn}, this is ${who}. Thank you for your time.`;
   }
 }
 function autoKind(trigger, party) {
-  if (party === "broker") return trigger === "enquiry" ? "cp_meeting" : trigger === "visit" ? "cp_thanks" : "cp_reminder";
-  return trigger === "enquiry" ? "cust_thanks" : trigger === "visit" ? "cust_followup" : "cust_reminder";
+  if (party === "broker") return trigger === "reminder" ? "cp_reminder" : "cp_thanks";
+  return trigger === "enquiry" ? "cust_thanks" : trigger === "visit" ? "cust_feedback" : "cust_reminder";
 }
 function autoCallForLead(lead, trigger) {
   if (!lead) return; const s = callSettings(); if (!s.triggers[trigger]) return;
@@ -2587,6 +2581,20 @@ function manualCallMessage(kind, v) {
     case "cp_thanks": return `Hi ${cp}, this is Ashiesh Sharma. Thank you for your continued support and coordination — I truly value our association. Let us keep creating great experiences for our customers together. Looking forward to working closely. Thank you.`;
     default: return `Hi ${name}, this is Ashiesh Sharma. I wanted to personally connect regarding ${project}. Whenever convenient, I would be glad to help you take the next step. Thank you for your time.`;
   }
+}
+// Manual 📞 Call → first choose WHO (customer / CP), then the call type.
+function openCallChooser(id) {
+  const l = leadById(id); if (!l) return;
+  const parties = [];
+  if (callDigits(l.customer_mobile)) parties.push(["customer", "🧑 Customer", "Call " + (esc(l.customer_name) || "the customer")]);
+  if (callDigits(l.source_mobile)) parties.push(["broker", "🤝 Channel Partner", "Call " + (esc(l.source_name) || "the CP")]);
+  if (!parties.length) return toast("No mobile number on file for this lead");
+  if (parties.length === 1) return manualCall(id, parties[0][0]);
+  modal("📞 Who do you want to call?", `
+    <div class="cc-choose">${parties.map(([k, lbl, sub]) => `<button type="button" class="cc-choice" data-callparty="${k}"><span class="cc-choice-t">${lbl}</span><span class="cc-choice-s">${sub}</span></button>`).join("")}</div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button></div>`, false);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  document.querySelectorAll("[data-callparty]").forEach((b) => b.onclick = () => { closeModal(); manualCall(id, b.getAttribute("data-callparty")); });
 }
 // Manual call button → first ask WHICH type of call, then place it with that script.
 function manualCall(leadId, party) {
@@ -2724,6 +2732,84 @@ function openScriptEdit(id) {
     if (id) { const x = callScripts().find((z) => z.id === id); if (x) { x.title = title; x.message = message; } }
     else callScripts().push({ id: "SC-" + Date.now().toString(36), title, message });
     save(); toast("Script saved ✓"); openScriptManager();
+  };
+}
+
+/* ---------- Cold-broker bridge: Google Sheet → Brokers + Calendar ---------- */
+function parseCSV(text) {
+  const rows = []; let field = "", row = [], inQ = false;
+  text = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) { if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; } else field += c; }
+    else if (c === '"') inQ = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else field += c;
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+function csvObjects(text) {
+  const rows = parseCSV(text).filter((r) => r.length && r.some((x) => String(x).trim()));
+  if (!rows.length) return [];
+  const head = rows[0].map((h) => String(h).trim().toLowerCase());
+  return rows.slice(1).map((r) => { const o = {}; head.forEach((h, i) => (o[h] = (r[i] || "").trim())); return o; });
+}
+function csvPick(o, ...keys) { const k = Object.keys(o).find((kk) => keys.some((w) => kk.includes(w))); return k ? o[k] : ""; }
+async function runColdImport(url) {
+  let text; try { const res = await fetch(url); text = await res.text(); } catch (e) { return { error: "Couldn't fetch the sheet — check the published CSV link (and that it's Published to web as CSV)." }; }
+  if (/<html/i.test(text)) return { error: "That link returned a web page, not CSV. Use File → Share → Publish to web → CSV." };
+  const objs = csvObjects(text);
+  if (!objs.length) return { error: "No rows found in the sheet." };
+  const done = DB.cold_imported || (DB.cold_imported = []);
+  let added = 0, skipped = 0, cal = 0;
+  objs.forEach((o) => {
+    const status = (csvPick(o, "status", "response") || "").toLowerCase();
+    if (!/fixed|interested|meeting/.test(status)) return;                 // only meeting-fixed rows
+    const number = callDigits(csvPick(o, "contact", "number", "mobile", "phone"));
+    const date = String(csvPick(o, "date") || "").slice(0, 10);
+    const time = (csvPick(o, "time") || "10:00").slice(0, 5);
+    if (number.length < 10 || !date) { skipped++; return; }
+    const key = number + "|" + date + "|" + time;
+    if (done.indexOf(key) >= 0) { skipped++; return; }                    // already imported
+    const name = csvPick(o, "name") || ("CP " + number.slice(-4));
+    const firm = csvPick(o, "firm", "agency"), notes = csvPick(o, "notes", "note");
+    const at = date + " " + time;
+    let b = DB.brokers.find((x) => callDigits(x.mobiles).includes(number));
+    if (b) { if (!b.firm && firm) b.firm = firm; b.connect = b.connect || "Live"; b.followup_at = at; b.followup_kind = "Cold Meeting"; }
+    else b = upsert("brokers", { name, mobiles: number, firm, connect: "Live", followup_at: at, followup_kind: "Cold Meeting", source: "Cold Call" });
+    addActivity({ entity_type: "broker", entity_id: b.id, kind: "Cold meeting fixed", remark: notes || ("Meeting on " + at), activity_at: now() });
+    try { gcalMaybeInsert("broker", b); cal++; } catch (e) {}
+    done.push(key); added++;
+  });
+  save();
+  return { added, skipped, cal };
+}
+function openColdImport() {
+  const url = DB.cold_csv_url || "";
+  modal("🧊 Import Cold Meetings", `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-body" style="font-size:13px;line-height:1.75">
+      <p>Pulls rows marked <b>Interested / Meeting Fixed</b> from your Channel-Partner Call Log sheet into your <b>Brokers</b> list and your <b>Calendar</b> (and Google Calendar if connected).</p>
+      <ol style="padding-left:20px;margin:6px 0 12px">
+        <li>In the Google Sheet: <b>File → Share → Publish to web</b> → pick that sheet, format <b>CSV</b> → <b>Publish</b> → copy the link.</li>
+        <li>Paste it below and Import. Re-run anytime — already-imported meetings are skipped.</li>
+      </ol>
+      <input id="cold_url" class="search" style="width:100%;font-family:ui-monospace,monospace;font-size:12px" placeholder="Published CSV link ( …/pub?output=csv )" value="${esc(url)}"/>
+      <div id="cold_out" style="margin-top:12px"></div>
+      <p class="muted" style="font-size:11px;margin-top:8px">Tip: the sheet needs columns like Name, Contact Number, Firm, Meeting Date, Meeting Time, Response Status.</p>
+    </div></div></div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Close</button><button class="btn primary" id="coldGo">Import meetings</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = closeModal;
+  document.getElementById("coldGo").onclick = async () => {
+    const u = fieldVal("cold_url").trim(); if (!u) return toast("Paste the published CSV link first");
+    DB.cold_csv_url = u; save();
+    const out = document.getElementById("cold_out"); out.innerHTML = `<div class="muted">Importing…</div>`;
+    const r = await runColdImport(u);
+    if (r.error) { out.innerHTML = `<div class="ai-err">${esc(r.error)}</div>`; return; }
+    out.innerHTML = `<div style="font-size:13px">✅ Imported <b>${r.added}</b> new meeting${r.added === 1 ? "" : "s"} · ${r.cal} added to calendar · ${r.skipped} skipped.</div>`;
+    toast("Cold meetings imported ✓");
+    if (["calendar", "brokers", "dash", "followups"].includes(active)) go(active);
   };
 }
 
@@ -3157,8 +3243,7 @@ function openLeadProfile(id) {
       </div>
       <div class="pf-actions">
         <button class="btn light sm" id="pfDraft">✦ Draft message</button>
-        ${callDigits(l.customer_mobile) ? `<button class="btn light sm" id="pfCallCust">📞 Call customer</button>` : ""}
-        ${callDigits(l.source_mobile) ? `<button class="btn light sm" id="pfCallCp">📞 Call CP</button>` : ""}
+        ${(callDigits(l.customer_mobile) || callDigits(l.source_mobile)) ? `<button class="btn light sm" id="pfCall">📞 Call</button>` : ""}
         <button class="btn light sm" id="pfEdit">Edit</button>
         ${l.followup_at ? `<button class="btn lightdanger sm" id="pfCancel">Cancel follow-up</button>` : ""}
       </div>
@@ -3223,8 +3308,7 @@ function openLeadProfile(id) {
   modal("Lead Profile", body, true);
   document.getElementById("pfEdit").onclick = () => { closeModal(); openLeadForm(l); };
   const pfd = document.getElementById("pfDraft"); if (pfd) pfd.onclick = () => openLeadDraft(id);
-  const pfcc = document.getElementById("pfCallCust"); if (pfcc) pfcc.onclick = () => manualCall(id, "customer");
-  const pfcp = document.getElementById("pfCallCp"); if (pfcp) pfcp.onclick = () => manualCall(id, "broker");
+  const pfc = document.getElementById("pfCall"); if (pfc) pfc.onclick = () => openCallChooser(id);
   document.querySelectorAll("[data-callauto]").forEach((b) => b.onclick = () => {
     const [lid, party, val] = b.getAttribute("data-callauto").split("::"); const L = leadById(Number(lid)); if (!L) return;
     if (party === "customer") L.call_customer = val === "1"; else L.call_broker = val === "1";
@@ -3509,6 +3593,7 @@ function sideAction(a) {
   }
   if (a === "changepw") openChangePassword();
   if (a === "callcenter") openCallCenter();
+  if (a === "coldimport") openColdImport();
 }
 // Change the password you use to sign in to the CRM on the website.
 function openChangePassword() {
