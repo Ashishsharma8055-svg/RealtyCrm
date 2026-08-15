@@ -2420,13 +2420,14 @@ function openLightbox(src) {
    so nobody is ever bombarded. Real dialing happens only via the
    Firebase Function after you connect ElevenLabs + Twilio.
    ============================================================ */
-const CALL_TRIGGERS = { manual: "Manual", enquiry: "Thanks Call (new lead)", visit: "Follow-up / Feedback", reminder: "Reminder Call (CP)" };
+const CALL_TRIGGERS = { manual: "Manual", enquiry: "Feedback (new lead)", visit: "Feedback (after visit)", reminder: "Reminder Call (CP)" };
 const CALL_STATUS_LABELS = { logged: "Logged (safe)", pending: "Call Queued", queued: "Call Queued", sent: "Call Sent ✓", skipped: "Skipped", failed: "Call Failed" };
 function callStatusLabel(s) { return CALL_STATUS_LABELS[s] || s; }
 // Reusable message scripts the user manages (schemes/offers/updates) — {DB.call_scripts}.
 function callScripts() { if (!DB.call_scripts) DB.call_scripts = []; return DB.call_scripts; }
 function fillScript(msg, v, party) {
   return String(msg || "")
+    .replace(/\{caller\}/gi, callPersona())
     .replace(/\{name\}/gi, party === "broker" ? (v.broker_name || "there") : (v.customer_name || "there"))
     .replace(/\{customer\}/gi, v.customer_name || "there")
     .replace(/\{cp\}/gi, v.broker_name || "there")
@@ -2530,36 +2531,39 @@ function requestCall(o) {
 // The CRM sends an OBJECTIVE + a natural opening line; the agent's master prompt
 // runs the rest of the conversation intelligently (persona: Neha=CP, Suji=Customer).
 const CALL_OBJECTIVES = {
-  cust_thanks:   { party: "customer", objective: "Customer Thanks",    label: "🙏 Thanks Call",           sub: "Build trust — thank them for their interest" },
-  cust_feedback: { party: "customer", objective: "Customer Feedback",   label: "💬 Feedback Call",         sub: "Ask how their experience has been" },
-  cust_reminder: { party: "customer", objective: "Customer Reminder",   label: "⏰ Follow-up / Reminder",  sub: "Remind about the meeting / visit" },
-  cust_reengage: { party: "customer", objective: "Customer Re-engage",  label: "❄️ Re-engage (cooling lead)", sub: "Warmly re-open a quiet lead" },
-  cp_thanks:     { party: "broker",   objective: "CP Thanks & Feedback", label: "🙏 Thanks & Feedback",     sub: "Thank the CP & ask for their input" },
-  cp_reminder:   { party: "broker",   objective: "CP Reminder",         label: "⏰ Reminder Call",          sub: "Remind about the customer's meeting" },
-  cp_engage:     { party: "broker",   objective: "CP Engagement",       label: "🚀 Engagement / Re-engage", sub: "Reconnect an active CP & fix a meeting" },
+  cust_feedback: { party: "customer", objective: "Customer Feedback",  label: "💬 Feedback Call",            sub: "Thank them & ask for feedback" },
+  cust_reminder: { party: "customer", objective: "Customer Reminder",  label: "⏰ Reminder Call",             sub: "Remind / confirm the meeting or visit" },
+  cust_reengage: { party: "customer", objective: "Customer Re-engage", label: "❄️ Re-engage (cooling lead)", sub: "Warmly re-open a quiet lead" },
+  cp_thanks:     { party: "broker",   objective: "CP Thanks & Feedback", label: "🙏 Thanks & Feedback",      sub: "Thank the CP & ask for their input" },
+  cp_reminder:   { party: "broker",   objective: "CP Reminder",        label: "⏰ Reminder Call",             sub: "Remind about the customer's meeting" },
 };
+// Editable message templates for each fixed call type (managed in Call Center → Message scripts).
+const TEMPLATE_META = [
+  ["cust_feedback", "Customer · Feedback Call"],
+  ["cust_reminder", "Customer · Reminder Call"],
+  ["cust_reengage", "Customer · Re-engage (cooling lead)"],
+  ["cp_thanks", "Channel Partner · Thanks & Feedback"],
+  ["cp_reminder", "Channel Partner · Reminder Call"],
+];
+const DEFAULT_TEMPLATES = {
+  cust_feedback: "Hi {name}, this is {caller} from Ashiesh Sharma's team at B P T P. I would like to thank you for showing interest in {project}. This is a quick feedback call — what did you like the most, and where do you feel we could improve?",
+  cust_reminder: "Hi {name}, this is {caller} from Ashiesh Sharma's team at B P T P. I wanted to update you about your scheduled {stage} on {date} for {project}. Please let me know if the timing works for you, or if you would like to change it.",
+  cust_reengage: "Dear {name}, this is from Ashiesh Sharma's team at B P T P. It has been a little while since we last connected about {project}, and I did not want you to miss out. Please let me know if there is anything I am missing, or anything I could do better, so we can re-match your interest with our project.",
+  cp_thanks: "Hi {cp}, this is {caller} from Ashiesh Sharma's team at B P T P. I would like to thank you for placing your trust in me. I am keen to do my very best for your customer {customer} for {project}. Is there anything you would like to share, so I can do it even better next time?",
+  cp_reminder: "Hi {cp}, this is {caller} from Ashiesh Sharma's team at B P T P. I wanted to remind you about your meeting with your customer {customer} for {project} on {date}. Wishing us a successful and long-term association together, along with this deal.",
+  default: "Hi {name}, this is {caller} from Ashiesh Sharma's team at B P T P. Thank you for your time.",
+};
+function callTemplate(kind) { return (DB.call_templates && DB.call_templates[kind]) || DEFAULT_TEMPLATES[kind] || DEFAULT_TEMPLATES.default; }
 // One agent, one caller persona (editable in Call Center → Caller name).
 function callPersona() { return (callSettings().callerName || "Neha"); }
-// FIXED scripts — the agent simply reads the message and ends the call (no improvising).
+// Builds the spoken message from the (editable) template for this call type.
 function callOpening(kind, v) {
-  const who = callPersona();
-  const cn = v.customer_name || "there", cp = v.broker_name || "there";
-  const project = v.project || "the project", stage = v.followup_kind || "meeting", date = v.followup_date || "the scheduled date";
-  const intro = (name) => `Hi ${name}, this is ${who} from Ashiesh Sharma's team at B P T P.`;
-  switch (kind) {
-    case "cust_thanks":   return `${intro(cn)} Thank you so much for showing interest in ${project}. I will personally make sure you receive the right guidance and complete assistance at every step. It would be my pleasure to help you find exactly what you are looking for. Have a wonderful day.`;
-    case "cust_feedback": return `${intro(cn)} I would like to thank you for showing interest in ${project}. This is a quick feedback call — what did you like the most, and where do you feel we could improve?`;
-    case "cust_reminder": return `${intro(cn)} I wanted to update you about your scheduled ${stage} on ${date} for ${project}. Please let me know if the timing works for you, or if you would like to change it.`;
-    case "cust_reengage": return `Dear ${cn}, this is from Ashiesh Sharma's team at B P T P. It has been a little while since we last connected about ${project}, and I did not want you to miss out. Please let me know if there is anything I am missing, or anything I could do better, so we can re-match your interest with our project.`;
-    case "cp_thanks":     return `${intro(cp)} I would like to thank you for placing your trust in me. I am keen to do my very best for your customer ${cn} for ${project}. Is there anything you would like to share, so I can do it even better next time?`;
-    case "cp_reminder":   return `${intro(cp)} I wanted to remind you about your meeting with your customer ${cn} for ${project} on ${date}. Wishing us a successful and long-term association together, along with this deal.`;
-    case "cp_engage":     return `${intro(cp)} I would love to reconnect and fix a short meeting, so we can share valuable insights with each other and build a strong, long-term association. Would you be open to that?`;
-    default: return `${intro(cn)} Thank you for your time.`;
-  }
+  const party = (CALL_OBJECTIVES[kind] || {}).party || "customer";
+  return fillScript(callTemplate(kind), v, party);
 }
 function autoKind(trigger, party) {
-  if (party === "broker") return trigger === "reminder" ? "cp_reminder" : "cp_thanks";
-  return trigger === "enquiry" ? "cust_thanks" : trigger === "visit" ? "cust_feedback" : "cust_reminder";
+  if (party === "broker") return "cp_reminder";                                  // CP auto = reminder only
+  return trigger === "reminder" ? "cust_reminder" : "cust_feedback";             // customer: reminder → reminder, else feedback
 }
 function autoCallForLead(lead, trigger) {
   if (!lead) return; const s = callSettings(); if (!s.triggers[trigger]) return;
@@ -2654,7 +2658,7 @@ function openCallCenter(quiet) {
       <div class="cc-grid">
         <div class="cc-card${s.autoEnabled ? "" : " cc-dim"}">
           <div class="cc-h">🧑 Automatic — Customer</div>
-          ${tgl("enquiry", "Thanks Call (new lead)")}${tgl("visit", "Follow-up / Feedback (after visit)")}
+          ${tgl("enquiry", "Feedback Call (new lead)")}${tgl("visit", "Feedback (after visit)")}
         </div>
         <div class="cc-card${s.autoEnabled ? "" : " cc-dim"}">
           <div class="cc-h">🤝 Automatic — Channel Partner</div>
@@ -2713,15 +2717,32 @@ function openCallCenter(quiet) {
 /* ---------- Custom message scripts (schemes / offers / updates) ---------- */
 function openScriptManager() {
   const list = callScripts();
-  const rows = list.length ? list.map((sc) => `<div class="sc-item"><div class="sc-item-t"><b>${esc(sc.title)}</b><div class="sc-item-m">${esc(String(sc.message).slice(0, 130))}${String(sc.message).length > 130 ? "…" : ""}</div></div><div class="sc-item-a"><button class="btn light sm" data-scedit="${sc.id}">Edit</button><button class="btn danger sm" data-scdel="${sc.id}">Del</button></div></div>`).join("") : `<div class="muted" style="font-size:13px;padding:10px">No scripts yet. Add one for your current scheme, offer or update — it'll appear in the 📞 call picker on every lead.</div>`;
-  modal("📝 Message Scripts", `
-    <p class="muted" style="font-size:12px;line-height:1.6;margin-bottom:12px">Reusable AI call scripts you control. They show up as choices in the 📞 call picker on every lead. Placeholders auto-fill per lead: <code>{name}</code>, <code>{project}</code>, <code>{cp}</code>, <code>{stage}</code>, <code>{date}</code>.</p>
+  const tmplRows = TEMPLATE_META.map(([k, label]) => `<div class="sc-item"><div class="sc-item-t"><b>${esc(label)}${(DB.call_templates && DB.call_templates[k]) ? ` <span class="an-badge">edited</span>` : ""}</b><div class="sc-item-m">${esc(String(callTemplate(k)).slice(0, 130))}${String(callTemplate(k)).length > 130 ? "…" : ""}</div></div><div class="sc-item-a"><button class="btn light sm" data-tmpledit="${k}">Edit</button></div></div>`).join("");
+  const rows = list.length ? list.map((sc) => `<div class="sc-item"><div class="sc-item-t"><b>${esc(sc.title)}</b><div class="sc-item-m">${esc(String(sc.message).slice(0, 130))}${String(sc.message).length > 130 ? "…" : ""}</div></div><div class="sc-item-a"><button class="btn light sm" data-scedit="${sc.id}">Edit</button><button class="btn danger sm" data-scdel="${sc.id}">Del</button></div></div>`).join("") : `<div class="muted" style="font-size:13px;padding:10px">No special messages yet. Add one for a scheme, offer or update — it'll appear as "Any Special Message" in the 📞 call picker.</div>`;
+  modal("📝 Message Scripts & Templates", `
+    <p class="muted" style="font-size:12px;line-height:1.6;margin-bottom:12px">Placeholders auto-fill per lead: <code>{name}</code> <code>{customer}</code> <code>{cp}</code> <code>{project}</code> <code>{stage}</code> <code>{date}</code> <code>{caller}</code>.</p>
+    <div class="cc-h">Call templates <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— the fixed calls; edit their exact wording</span></div>
+    <div class="sc-list">${tmplRows}</div>
+    <div class="cc-h" style="margin-top:16px">Special messages <span class="muted" style="font-weight:400;text-transform:none;letter-spacing:0">— schemes / offers, shown as "Any Special Message" in the picker</span></div>
     <div class="sc-list">${rows}</div>
-    <div class="modal-foot"><button class="btn outline" data-close2>Back</button><button class="btn primary" id="scAdd">+ Add script</button></div>`, true);
+    <div class="modal-foot"><button class="btn outline" data-close2>Back</button><button class="btn primary" id="scAdd">+ Add special message</button></div>`, true);
   document.querySelector("[data-close2]").onclick = () => openCallCenter();
   document.getElementById("scAdd").onclick = () => openScriptEdit(null);
+  document.querySelectorAll("[data-tmpledit]").forEach((b) => b.onclick = () => openTemplateEdit(b.getAttribute("data-tmpledit")));
   document.querySelectorAll("[data-scedit]").forEach((b) => b.onclick = () => openScriptEdit(b.getAttribute("data-scedit")));
   document.querySelectorAll("[data-scdel]").forEach((b) => b.onclick = () => { if (confirm("Delete this script?")) { DB.call_scripts = callScripts().filter((x) => x.id !== b.getAttribute("data-scdel")); save(); openScriptManager(); } });
+}
+function openTemplateEdit(kind) {
+  const cur = callTemplate(kind), label = (TEMPLATE_META.find((t) => t[0] === kind) || [, "Template"])[1];
+  modal("Edit template · " + label, `
+    <div class="lf"><div class="lf-sec"><div class="lf-sec-body">
+      <div class="field full"><label>Message (exactly what the AI will say)</label><textarea id="tmpl_msg" rows="6">${esc(cur)}</textarea></div>
+      <p class="muted" style="font-size:11px;margin-top:6px">Placeholders: {name} {customer} {cp} {project} {stage} {date} {caller} — filled automatically per lead.</p>
+    </div></div></div>
+    <div class="modal-foot"><button class="btn outline" data-close2>Cancel</button><button class="btn light" id="tmplReset">Reset to default</button><button class="btn primary" id="tmplSave">Save</button></div>`, true);
+  document.querySelector("[data-close2]").onclick = () => openScriptManager();
+  document.getElementById("tmplReset").onclick = () => { if (DB.call_templates) delete DB.call_templates[kind]; save(); toast("Reset to default"); openTemplateEdit(kind); };
+  document.getElementById("tmplSave").onclick = () => { const t = fieldVal("tmpl_msg").trim(); if (!t) return toast("Message can't be empty"); DB.call_templates = DB.call_templates || {}; DB.call_templates[kind] = t; save(); toast("Template saved ✓"); openScriptManager(); };
 }
 function openScriptEdit(id) {
   const sc = id ? callScripts().find((x) => x.id === id) : { title: "", message: "" };
